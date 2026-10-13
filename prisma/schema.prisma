@@ -1,0 +1,445 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+model User {
+  id              String   @id @default(uuid())
+  username        String   @unique
+  email           String   @unique
+  firstName       String
+  lastName        String
+  birthYear       Int
+  passwordHash    String
+  role            Role     @default(STUDENT)
+  emailVerifiedAt DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  /// Yo'nalish tanlash taklifi yopilganmi (bir martalik taklif, keyin Asosiy sahifada eslatma)
+  directionPromptDismissedAt DateTime?
+
+  sessions   Session[]
+  directions UserDirection[]
+  mistakes   UserMistake[]
+  placements PlacementAttempt[]
+
+  lessons        Lesson[]
+  lessonAttempts LessonBlockAttempt[]
+  lessonProgress LessonProgress[]
+  assets         Asset[]
+
+  vocabulary VocabularyEntry[]
+  notes      StudentNote[]
+  saved      SavedMaterial[]
+}
+
+/// Server-side sessiya. Cookie'da faqat tasodifiy token, bazada uning hash'i.
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String   @unique
+  /// "Meni eslab qol" belgilanganmi (cookie doimiy yoki sessiya-cookie)
+  remember  Boolean
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Email tasdiqlanmaguncha foydalanuvchi yaratilmaydi: ma'lumot shu yerda turadi.
+model PendingRegistration {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String
+  firstName    String
+  lastName     String
+  birthYear    Int
+  passwordHash String
+  codeHash     String
+  attempts     Int      @default(0)
+  expiresAt    DateTime
+  lastSentAt   DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([username])
+  @@index([expiresAt])
+}
+
+model PasswordReset {
+  id         String   @id @default(uuid())
+  userId     String   @unique
+  codeHash   String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  lastSentAt DateTime
+  createdAt  DateTime @default(now())
+}
+
+// ───────────── O'quv mazmuni (hozircha seed, keyin admin/ustoz tomonidan) ─────────────
+
+enum DirectionKind {
+  LANGUAGE
+  SUBJECT
+}
+
+model Direction {
+  id          String        @id @default(uuid())
+  slug        String        @unique
+  kind        DirectionKind
+  title       String
+  description String
+  /// false = "Tez orada": tanlab bo'lmaydi
+  active      Boolean       @default(false)
+  sortOrder   Int           @default(0)
+
+  levels     Level[]
+  users      UserDirection[]
+  questions  Question[]
+  placements PlacementAttempt[]
+}
+
+model Level {
+  id          String   @id @default(uuid())
+  directionId String
+  code        String
+  /// 1 dan boshlab: A1=1 ... C2=6
+  ord         Int
+  title       String
+  summary     String
+  /// "Bu darajada nimalarni bilishingiz kerak" ro'yxati
+  canDo       String[]
+  vocabHint   String
+
+  direction Direction  @relation(fields: [directionId], references: [id], onDelete: Cascade)
+  topics    Topic[]
+  questions Question[]
+
+  @@unique([directionId, ord])
+}
+
+model Topic {
+  id      String @id @default(uuid())
+  levelId String
+  ord     Int
+  /// Hozircha faqat sarlavha; mazmunni ustoz qo'shadi
+  title   String
+
+  level     Level      @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  rules     Rule[]
+  questions Question[]
+  lessons   Lesson[]
+
+  @@unique([levelId, ord])
+}
+
+/// Xato turi (takroriy xatolar shu bo'yicha sanaladi) va uning tushuntirishi
+model Rule {
+  id       String @id @default(uuid())
+  key      String @unique
+  topicId  String
+  title    String
+  tipTitle String
+  /// Oddiy matn; "- " bilan boshlangan qatorlar ro'yxat, **...** qalin
+  tipBody  String
+  remember String
+
+  topic     Topic      @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questions Question[]
+}
+
+model Question {
+  id              String   @id @default(uuid())
+  key             String   @unique
+  directionId     String
+  levelId         String
+  topicId         String
+  ruleId          String
+  /// Bo'sh joy "_____" bilan
+  prompt          String
+  instruction     String
+  options         String[]
+  correctIndex    Int
+  correctSentence String
+  /// Shu savolga xos qisqa izoh (qoida izohiga qo'shimcha)
+  note            String
+
+  direction Direction     @relation(fields: [directionId], references: [id], onDelete: Cascade)
+  level     Level         @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  topic     Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  rule      Rule          @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  mistakes  UserMistake[]
+
+  @@index([directionId, levelId])
+}
+
+// ───────────── Foydalanuvchi jarayoni ─────────────
+
+enum LevelAccess {
+  /// Joriy darajada mavzular tartib bilan ochiladi
+  SEQUENTIAL
+  /// Joriy darajaning hamma mavzulari ochiq (75-90% natija)
+  OPEN
+}
+
+model UserDirection {
+  id              String      @id @default(uuid())
+  userId          String
+  directionId     String
+  /// null = daraja hali aniqlanmagan
+  currentLevelOrd Int?
+  levelAccess     LevelAccess @default(SEQUENTIAL)
+  /// Daraja qanday aniqlangan: ZERO | CLAIMED | UNKNOWN
+  placedBy        String?
+  /// Har daraja uchun ochilgan eng yuqori mavzu tartibi: { "<levelOrd>": <topicOrd> }. Faqat oshadi (ratchet):
+  /// ustoz darsni nashrdan olsa yoki yangi dars qo'shsa, oldin ochilgan mavzu qayta qulflanmaydi.
+  topicFrontier   Json        @default("{}")
+  createdAt       DateTime    @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  direction Direction @relation(fields: [directionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, directionId])
+}
+
+enum PlacementMode {
+  CLAIMED
+  UNKNOWN
+}
+
+model PlacementAttempt {
+  id          String        @id @default(uuid())
+  userId      String
+  directionId String
+  mode        PlacementMode
+  /// CLAIMED rejimida tanlangan daraja
+  claimedOrd  Int?
+  /// Savollar tartibi (CLAIMED: oldindan; UNKNOWN: bosqichma-bosqich to'ldiriladi)
+  questionIds String[]
+  /// Javoblar: { questionId, choice, correct, levelOrd }[]
+  answers     Json          @default("[]")
+  done        Boolean       @default(false)
+  scorePct    Int?
+  /// Natija: ADVANCE | REPEAT_OPEN | START_ZERO | RETEST_LOWER | PLACED
+  outcome     String?
+  resultOrd   Int?
+  createdAt   DateTime      @default(now())
+  finishedAt  DateTime?
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  direction Direction @relation(fields: [directionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, directionId])
+}
+
+/// Har bir (foydalanuvchi, savol) uchun bitta qator: takror xatolar dublikat bo'lmaydi, soni oshadi.
+model UserMistake {
+  id         String   @id @default(uuid())
+  userId     String
+  questionId String
+  count      Int      @default(1)
+  lastChoice Int
+  lastAt     DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([userId])
+}
+
+// ───────────── Vizual darslar (Lesson Builder) ─────────────
+
+enum LessonVersionStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// Ustoz yaratgan dars. Mazmun `LessonVersion.doc` (JSON hujjat) ichida.
+model Lesson {
+  id                 String   @id @default(uuid())
+  topicId            String
+  authorId           String
+  title              String
+  /// Hozir o'quvchilarga ko'rinayotgan (o'zgarmas) versiya; null = hali nashr qilinmagan
+  publishedVersionId String?  @unique
+  /// Mavzu ichidagi tartib (oraliq 100). Teng bo'lsa createdAt, id bo'yicha.
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  topic     Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author    User            @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  versions  LessonVersion[] @relation("LessonVersions")
+  published LessonVersion?  @relation("LessonPublished", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+
+  @@index([topicId])
+  @@index([topicId, sortOrder])
+  @@index([authorId])
+}
+
+/// DRAFT: har dars uchun bitta, tahrirlanadi (`rev` — optimistic lock). PUBLISHED: o'zgarmas snapshot.
+model LessonVersion {
+  id          String              @id @default(uuid())
+  lessonId    String
+  status      LessonVersionStatus
+  rev         Int                 @default(1)
+  /// Versiyalangan hujjat: { schemaVersion, pages[] }. Tuzilishi server/src/lessons/doc.schema.ts da.
+  doc         Json
+  createdAt   DateTime            @default(now())
+  publishedAt DateTime?
+
+  lesson       Lesson               @relation("LessonVersions", fields: [lessonId], references: [id], onDelete: Cascade)
+  publishedFor Lesson?              @relation("LessonPublished")
+  attempts     LessonBlockAttempt[]
+  progress     LessonProgress[]
+
+  @@index([lessonId, status])
+}
+
+/// Har (o'quvchi, versiya, blok) uchun bitta qator.
+model LessonBlockAttempt {
+  id          String   @id @default(uuid())
+  userId      String
+  versionId   String
+  blockId     String
+  tries       Int      @default(1)
+  /// Oxirgi urinish to'g'rimi
+  correct     Boolean
+  /// Hech bo'lmaganda bir marta to'g'ri javob berilganmi
+  everCorrect Boolean
+  /// Noto'g'ri urinishlar soni (Daftar → Xatolarim). Eski qatorlar uchun pastki chegara: migration to'ldirgan.
+  wrongTries  Int      @default(0)
+  response    Json
+  updatedAt   DateTime @updatedAt
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version LessonVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, versionId, blockId])
+}
+
+model LessonProgress {
+  id          String    @id @default(uuid())
+  userId      String
+  versionId   String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  /// Oxirgi tasdiqlangan sahifa tartibi (faqat davom ettirish uchun; progress emas)
+  lastPageIndex  Int?
+  /// Haqiqatan ochib ko'rilgan sahifa id'lari (faqat qo'shiladi). Ochiq sahifa va tugatishdan alohida.
+  visitedPageIds String[] @default([])
+
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version LessonVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, versionId])
+}
+
+// ───────────── Daftar (o'quvchining shaxsiy bilim maydoni) ─────────────
+// Manba havolalari (directionId/topicId/lessonId/pageId) ataylab FK'siz: dars/mavzu o'chirilsa yozuv saqlanadi,
+// o'qishda "mavjud emas" holati ko'rsatiladi. `source*` — yaratilgan paytdagi nomlar (snapshot).
+
+/// Lug'at: so'z/atama + ma'no. Bir so'z turli ma'noda bo'lishi mumkin: (userId, termKey, meaningKey) yagona,
+/// ammo termKey bo'yicha takrorlar avtomatik birlashtirilmaydi.
+model VocabularyEntry {
+  id          String   @id @default(uuid())
+  userId      String
+  term        String
+  /// Normallashtirilgan (kichik harf, bo'shliq/apostrof) — qidirish va takrorni aniqlash uchun
+  termKey     String
+  meaning     String   @default("")
+  meaningKey  String   @default("")
+  example     String   @default("")
+  note        String   @default("")
+  directionId String?
+  topicId     String?
+  lessonId    String?
+  pageId      String?
+  sourceTitle String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, termKey, meaningKey])
+  @@index([userId, createdAt])
+  @@index([userId, directionId])
+  @@index([userId, topicId])
+}
+
+/// Shaxsiy eslatma (mustaqil yoki dars/sahifa bilan bog'langan).
+model StudentNote {
+  id          String   @id @default(uuid())
+  userId      String
+  title       String   @default("")
+  body        String
+  directionId String?
+  topicId     String?
+  lessonId    String?
+  pageId      String?
+  sourceTitle String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+  @@index([userId, directionId])
+  @@index([userId, topicId])
+}
+
+/// Saqlangan dars yoki uning sahifasi. pageId '' = butun dars. Sahifa id'si dars hujjatidagi real `pages[].id`.
+model SavedMaterial {
+  id          String   @id @default(uuid())
+  userId      String
+  lessonId    String
+  pageId      String   @default("")
+  directionId String?
+  topicId     String?
+  lessonTitle String
+  pageTitle   String   @default("")
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId, pageId])
+  @@index([userId, createdAt])
+  @@index([userId, directionId])
+  @@index([userId, topicId])
+}
+
+enum AssetKind {
+  IMAGE
+  AUDIO
+}
+
+/// Ustoz yuklagan rasm/audio. Fayl diskda (UPLOAD_DIR/<id>), hujjatda faqat id.
+model Asset {
+  id           String    @id @default(uuid())
+  ownerId      String
+  kind         AssetKind
+  /// Fayl mazmunidan aniqlangan (mijoz aytgan Content-Type'ga ishonilmaydi)
+  mime         String
+  size         Int
+  originalName String
+  createdAt    DateTime  @default(now())
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+}

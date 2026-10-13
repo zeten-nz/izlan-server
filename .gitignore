@@ -1,0 +1,39 @@
+# bog'liqliklar va build natijalari
+node_modules
+dist
+*.tsbuildinfo
+
+# muhit sozlamalari: faqat .env.example kuzatiladi (haqiqiy qiymatlar hech qachon repoga tushmasin)
+.env
+.env.*
+!.env.example
+
+# foydalanuvchi media fayllari (rasm/audio): repoga kirmaydi, backup orqali saqlanadi
+uploads
+
+# backup, dump va restic: maxfiy ma'lumot
+backups
+/backup
+*.dump
+*.sql.gz
+*.sql.bz2
+*.backup
+*.bak
+restic-password*
+.restic*
+*.restic-key
+
+# kalitlar va sertifikatlar
+*.pem
+*.key
+*.p12
+id_rsa*
+id_ed25519*
+
+# loglar va vaqtinchalik fayllar
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+tmp
+.tmp

@@ -1,0 +1,11 @@
+title = "Izlan server: gitleaks sozlamasi"
+
+[extend]
+useDefault = true
+
+# Yolg'on topilma: seed ma'lumotidagi grammatika qoidalari identifikatorlari (masalan `key: "a2-quantifiers",`).
+# Bu sir emas. Faqat shu shakldagi qatorlar e'tiborga olinmaydi; haqiqiy kalit/parol hamon topiladi.
+[allowlist]
+description = "Seed: qoida identifikatorlari"
+regexTarget = "line"
+regexes = ['''^\s*key:\s*"[a-z0-9]+(?:-[a-z0-9]+)+",?\s*$''']

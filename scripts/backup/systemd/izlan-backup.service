@@ -1,0 +1,19 @@
+[Unit]
+Description=Izlan backup (PostgreSQL pg_dump + uploads tar.gz)
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=izlan-backup
+Group=izlan-backup
+Environment=IZLAN_BACKUP_CONFIG=/etc/izlan-backup/backup.env
+ExecStart=/opt/izlan-backup/backup.sh
+# Disk to'lsa yoki xato bo'lsa non-zero kod bilan tugaydi: `systemctl status izlan-backup` / `journalctl -u izlan-backup`
+Nice=10
+IOSchedulingClass=idle
+# Qattiqlashtirish: faqat backup papkasi va log yoziladi
+ProtectSystem=strict
+ReadWritePaths=/var/backups/izlan /var/log
+ReadOnlyPaths=/srv/izlan
+PrivateTmp=true
+NoNewPrivileges=true

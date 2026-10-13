@@ -1,0 +1,12 @@
+[Unit]
+Description=Izlan backup: har kuni 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+# Server 03:00 da o'chiq bo'lsa, yoqilganda bajariladi
+Persistent=true
+RandomizedDelaySec=0
+Unit=izlan-backup.service
+
+[Install]
+WantedBy=timers.target

@@ -44,5 +44,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "fastify": "5.12.7",
+    "deepmerge-ts": "8.0.2"
   }
 }

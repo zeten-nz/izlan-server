@@ -5,6 +5,7 @@
  *   npm run db:seed            # admin + katalog (ikkalasi ham xavfsiz)
  *   npm run db:seed:admin      # faqat dastlabki ADMIN
  *   npm run db:seed:catalog    # faqat demo katalog (faqat katalog bo'sh bo'lsa)
+ *   npm run db:seed:cosmetics  # boshlang'ich 12 ta bezak (faqat yo'qlarini yaratadi; narx/egalik yo'q)
  *   npm run db:seed:catalog -- --missing   # faqat yo'q yo'nalishlarni qo'shadi (mavjudiga tegmaydi)
  *
  * Dastlabki ADMIN muhit o'zgaruvchilaridan olinadi (parol kodda yo'q): ./seed/admin.ts ga qarang.
@@ -15,13 +16,14 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { seedAdmin } from "./seed/admin";
 import { seedCatalog } from "./seed/catalog";
+import { seedCosmetics } from "./seed/cosmetics";
 
-type Part = "admin" | "catalog" | "all";
+type Part = "admin" | "catalog" | "cosmetics" | "all";
 
 async function main() {
   const args = process.argv.slice(2);
   const part = (args.find((a) => !a.startsWith("--")) ?? "all") as Part;
-  if (!["admin", "catalog", "all"].includes(part)) throw new Error(`Noma'lum bo'lim: ${part} (admin | catalog | all)`);
+  if (!["admin", "catalog", "cosmetics", "all"].includes(part)) throw new Error(`Noma'lum bo'lim: ${part} (admin | catalog | cosmetics | all)`);
 
   if (process.env.NODE_ENV === "production" && !args.includes("--confirm") && process.env.SEED_CONFIRM !== "yes") {
     throw new Error("Productionda seed faqat ongli ravishda ishga tushiriladi: --confirm bayrog'ini bering (yoki SEED_CONFIRM=yes).");
@@ -45,6 +47,10 @@ async function main() {
             (r.created.length ? ` — ${c.levels} daraja, ${c.topics} mavzu, ${c.rules} qoida, ${c.questions} savol` : ""),
         );
       }
+    }
+    if (part === "cosmetics" || part === "all") {
+      const r = await seedCosmetics(prisma);
+      console.log(`✔ Bezaklar: yaratildi ${r.created.length} ta, mavjud (tegilmadi) ${r.existing.length} ta. Narx va egalik berilmadi.`);
     }
   } finally {
     await prisma.$disconnect();

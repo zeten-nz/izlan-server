@@ -42,6 +42,12 @@ model User {
   vocabulary VocabularyEntry[]
   notes      StudentNote[]
   saved      SavedMaterial[]
+
+  profile      Profile?
+  wallet       Wallet?
+  equipped     EquippedCosmetics?
+  cosmetics    CosmeticOwnership[]
+  achievements UserAchievement[]
 }
 
 /// Server-side sessiya. Cookie'da faqat tasodifiy token, bazada uning hash'i.
@@ -341,15 +347,15 @@ model LessonBlockAttempt {
 }
 
 model LessonProgress {
-  id          String    @id @default(uuid())
-  userId      String
-  versionId   String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
+  id             String    @id @default(uuid())
+  userId         String
+  versionId      String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
   /// Oxirgi tasdiqlangan sahifa tartibi (faqat davom ettirish uchun; progress emas)
   lastPageIndex  Int?
   /// Haqiqatan ochib ko'rilgan sahifa id'lari (faqat qo'shiladi). Ochiq sahifa va tugatishdan alohida.
-  visitedPageIds String[] @default([])
+  visitedPageIds String[]  @default([])
 
   user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   version LessonVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -449,4 +455,155 @@ model Asset {
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+}
+
+// ───────────── Profil, mukofotlar va shaxsiy identifikatsiya ─────────────
+// XP/IZL berish va sarflash mexanizmi HOZIRCHA YO'Q: balanslar faqat o'qiladi (qator bo'lmasa 0).
+
+/// Ommaviy profil sozlamalari. Qator bo'lmasa — hammasi yopiq (xavfsiz standart).
+model Profile {
+  userId           String   @id
+  bio              String   @default("")
+  isPublic         Boolean  @default(false)
+  showFullName     Boolean  @default(false)
+  showAchievements Boolean  @default(false)
+  showStats        Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Eski username -> user (username o'zgarsa eski havola yangisiga yo'naltiriladi). Yozuv username o'zgartirish
+/// funksiyasi qo'shilganda shu jadvalga yoziladi; hozir faqat qidiruv tayyor.
+model UsernameAlias {
+  oldUsername String   @id
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// XP/IZL balansi. xpBalance — sarflanadigan; totalXpEarned — jami (xariddan kamaymaydi); izlBalance — alohida valyuta.
+/// Manfiy bo'lmasligi DB CHECK bilan kafolatlanadi (migration.sql).
+model Wallet {
+  userId        String   @id
+  xpBalance     Int      @default(0)
+  totalXpEarned Int      @default(0)
+  izlBalance    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum CosmeticKind {
+  FRAME
+  BANNER
+  EFFECT
+  TITLE
+}
+
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum CosmeticStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
+}
+
+enum OwnershipSource {
+  PURCHASE
+  ACHIEVEMENT
+  EVENT
+  ADMIN_GRANT
+}
+
+/// Bezak katalogi. Katalogdan "olib tashlash" = status DISABLED; qator o'chirilmaydi (egalik saqlanadi).
+model CosmeticItem {
+  id          String         @id @default(uuid())
+  slug        String         @unique
+  kind        CosmeticKind
+  rarity      Rarity
+  name        String
+  description String         @default("")
+  /// null = narx hali belgilanmagan
+  priceXp     Int?
+  status      CosmeticStatus @default(DRAFT)
+  /// Vizual tavsif (tokenlar): klient o'z tokenlari orqali chizadi, ixtiyoriy HTML/CSS qabul qilinmaydi
+  preview     Json           @default("{}")
+  season      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  owners CosmeticOwnership[]
+
+  @@index([kind, status])
+}
+
+model CosmeticOwnership {
+  id         String          @id @default(uuid())
+  userId     String
+  itemId     String
+  source     OwnershipSource
+  acquiredAt DateTime        @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, itemId])
+  @@index([itemId])
+}
+
+/// Har turdan bittadan faol bezak (tuzilma bo'yicha kafolat). Egalik tekshiruvi servisda.
+model EquippedCosmetics {
+  userId    String   @id
+  frameId   String?
+  bannerId  String?
+  effectId  String?
+  titleId   String?
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Yutuq ta'rifi. Avtomatik berish mexanizmi yo'q: UserAchievement faqat kelajakdagi integratsiya uchun.
+model AchievementDefinition {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String
+  achievementId String
+  earnedAt      DateTime @default(now())
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, achievementId])
+}
+
+/// Admin amallari jurnali (faqat qo'shiladi).
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  action    String
+  entity    String
+  entityId  String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
 }

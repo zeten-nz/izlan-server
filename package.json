@@ -11,10 +11,11 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
-    "test": "nest build && node --test dist/learning/placement.engine.spec.js dist/learning/progress.spec.js dist/lessons/lessons.spec.js dist/notebook/notebook.spec.js dist/lessons/media-check.spec.js dist/admin/catalog.spec.js dist/mail/mail.spec.js dist/auth/auth.otp.spec.js",
+    "test": "nest build && node --test dist/learning/placement.engine.spec.js dist/learning/progress.spec.js dist/lessons/lessons.spec.js dist/notebook/notebook.spec.js dist/lessons/media-check.spec.js dist/admin/catalog.spec.js dist/mail/mail.spec.js dist/auth/auth.otp.spec.js dist/profile/profile.spec.js",
     "db:seed": "prisma db seed",
     "db:seed:admin": "tsx prisma/seed.ts admin",
     "db:seed:catalog": "tsx prisma/seed.ts catalog",
+    "db:seed:cosmetics": "tsx prisma/seed.ts cosmetics",
     "admin:create": "node dist/cli/create-admin.js"
   },
   "dependencies": {

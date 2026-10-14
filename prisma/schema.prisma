@@ -90,6 +90,13 @@ model PasswordReset {
   createdAt  DateTime @default(now())
 }
 
+/// Kunlik email kvotasi (Resend bepul tarifi): kun (UTC) boshiga ishlatilgan xatlar soni. Atomik rezerv qilinadi.
+model EmailQuota {
+  day       String   @id
+  used      Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 // ───────────── O'quv mazmuni (hozircha seed, keyin admin/ustoz tomonidan) ─────────────
 
 enum DirectionKind {

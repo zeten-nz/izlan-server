@@ -47,11 +47,22 @@ export class AppConfig {
     return this.num('OTP_RESEND_SECONDS', 60) * 1000;
   }
 
-  get mailDriver(): 'console' | 'smtp' {
+  get mailDriver(): 'console' | 'smtp' | 'resend' {
     const d = this.cfg.get<string>('MAIL_DRIVER') ?? 'console';
-    if (d !== 'console' && d !== 'smtp') throw new Error('MAIL_DRIVER: console yoki smtp');
-    if (d === 'console' && this.isProd) throw new Error("Productionda MAIL_DRIVER=smtp bo'lishi shart");
+    if (d !== 'console' && d !== 'smtp' && d !== 'resend') throw new Error('MAIL_DRIVER: console, smtp yoki resend');
+    if (d === 'console' && this.isProd) throw new Error("Productionda MAIL_DRIVER=resend (yoki smtp) bo'lishi shart");
     return d;
+  }
+  get resendApiKey() {
+    return this.str('RESEND_API_KEY');
+  }
+  /** Resend so'rovi shuncha ms'dan keyin "natija noaniq" deb hisoblanadi. */
+  get mailTimeoutMs() {
+    return this.num('MAIL_SEND_TIMEOUT_MS', 10_000);
+  }
+  /** Kunlik email limiti (Resend bepul: 100; zaxira uchun 90). Faqat resend driver'da qo'llanadi. */
+  get emailDailyLimit() {
+    return this.num('EMAIL_DAILY_LIMIT', 90);
   }
   get smtp() {
     return {

@@ -11,7 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",
-    "test": "nest build && node --test dist/learning/placement.engine.spec.js dist/learning/progress.spec.js dist/lessons/lessons.spec.js dist/notebook/notebook.spec.js dist/lessons/media-check.spec.js dist/admin/catalog.spec.js",
+    "test": "nest build && node --test dist/learning/placement.engine.spec.js dist/learning/progress.spec.js dist/lessons/lessons.spec.js dist/notebook/notebook.spec.js dist/lessons/media-check.spec.js dist/admin/catalog.spec.js dist/mail/mail.spec.js dist/auth/auth.otp.spec.js",
     "db:seed": "prisma db seed",
     "db:seed:admin": "tsx prisma/seed.ts admin",
     "db:seed:catalog": "tsx prisma/seed.ts catalog",
@@ -31,6 +31,7 @@
     "dotenv": "^18.0.6",
     "nodemailer": "^10.0.16",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.32.1",
     "rxjs": "^7.8.2",
     "zod": "^3.25.76"
   },
@@ -44,5 +45,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "overrides": {
+    "fastify": "5.12.7",
+    "deepmerge-ts": "8.0.2"
   }
 }

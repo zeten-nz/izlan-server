@@ -7,6 +7,8 @@ import { LearningModule } from './learning/learning.module';
 import { LessonsModule } from './lessons/lessons.module';
 import { NotebookModule } from './notebook/notebook.module';
 import { ProfileModule } from './profile/profile.module';
+import { QuizModule } from './quiz/quiz.module';
+import { XpModule } from './xp/xp.module';
 import { AppConfigModule } from './config/config.module';
 import { PrismaModule } from './prisma/prisma.service';
 
@@ -21,6 +23,8 @@ import { PrismaModule } from './prisma/prisma.service';
     LessonsModule,
     NotebookModule,
     ProfileModule,
+    XpModule,
+    QuizModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

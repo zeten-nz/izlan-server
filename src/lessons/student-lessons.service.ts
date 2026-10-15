@@ -5,12 +5,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { isInteractive, parseDoc, type LessonDoc } from './doc.schema';
 import { checkAnswer, projectPage, requiredProgress, reviewProgress, unlockedCount, type AttemptState } from './player';
 import { isContentPreparing, isTopicCompleted } from '../learning/progress';
+import { XpService } from '../xp/xp.service';
 
 @Injectable()
 export class StudentLessonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly learning: LearningService,
+    private readonly xp: XpService,
   ) {}
 
   /** Mavzudagi nashr qilingan darslar (mavzu o'quvchiga ochiq bo'lsa). Tartib: sortOrder, createdAt, id. */
@@ -219,7 +221,7 @@ export class StudentLessonsService {
    * Darsni tugatish — IDEMPOTENT. Kalit: (o'quvchi, dars) — versiya emas (sticky completion).
    * - Dars istalgan versiyada allaqachon tugatilgan bo'lsa: hech narsa o'zgarmaydi, `firstTime: false`.
    * - Parallel so'rovlar (o'quvchi, dars) bo'yicha advisory qulf bilan ketma-ketlashtiriladi.
-   * - Mukofot (kelajak) faqat `firstTime: true` da va `lesson-complete:{userId}:{lessonId}` kaliti bilan beriladi.
+   * - XP faqat `firstTime: true` da, `lesson:{userId}:{lessonId}` dedupe kaliti bilan va shu tranzaksiyada beriladi.
    */
   async complete(userId: string, lessonId: string) {
     const { lesson, version, doc } = await this.resolveVersion(userId, lessonId);
@@ -227,7 +229,7 @@ export class StudentLessonsService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ':' + lessonId}, 0))`;
 
       const existing = await this.firstCompletion(tx, userId, lessonId);
-      if (existing?.completedAt) return { completed: true, completedAt: existing.completedAt, firstTime: false };
+      if (existing?.completedAt) return { completed: true, completedAt: existing.completedAt, firstTime: false, xp: null };
 
       const { allDone } = unlockedCount(doc, await this.attemptMap(userId, version.id, tx));
       if (!allDone) throw new ConflictException('Avval barcha majburiy sahifalarni bajaring');
@@ -240,7 +242,9 @@ export class StudentLessonsService {
       });
       // Tugatish mavzu ochilishini oshirishi mumkin (faqat oshadi)
       await this.learning.advanceAfterCompletion(tx, userId, lesson.topicId);
-      return { completed: true, completedAt: now, firstTime: true };
+      // XP shu tranzaksiyada: tugatish va mukofot birga yoziladi yoki birga qaytariladi
+      const xp = await this.xp.onLessonFirstCompleted(tx, userId, { id: lesson.id, topicId: lesson.topicId }, now);
+      return { completed: true, completedAt: now, firstTime: true, xp };
     });
   }
 }

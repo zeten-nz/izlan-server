@@ -48,6 +48,12 @@ model User {
   equipped     EquippedCosmetics?
   cosmetics    CosmeticOwnership[]
   achievements UserAchievement[]
+
+  xpLedger         XpLedger[]
+  xpTopicDays      XpTopicDay[]
+  topicCompletions TopicCompletion[]
+  quizAttempts     QuizAttempt[]
+  authoredQuizzes  TopicQuiz[]       @relation("QuizAuthor")
 }
 
 /// Server-side sessiya. Cookie'da faqat tasodifiy token, bazada uning hash'i.
@@ -156,6 +162,7 @@ model Topic {
   rules     Rule[]
   questions Question[]
   lessons   Lesson[]
+  quiz      TopicQuiz?
 
   @@unique([levelId, ord])
 }
@@ -606,4 +613,129 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([actorId])
+}
+
+// ───────────── XP iqtisodiyoti: ledger, mavzu belgilari va mavzu testi ─────────────
+// XP berish FAQAT server hodisalari orqali (src/xp). Wallet shu ledger bilan bitta tranzaksiyada yangilanadi.
+
+enum XpEventType {
+  LESSON_COMPLETE
+  TOPIC_COMPLETE
+  QUIZ_TIER
+  NOTE_VERIFIED
+}
+
+/// EARN hozir yagona ishlatiladi; SPEND/ADJUST kelajakdagi xarid va tuzatishlar uchun zaxira (grantedXp <= 0).
+enum XpEntryKind {
+  EARN
+  SPEND
+  ADJUST
+}
+
+/// Append-only XP jurnali: UPDATE DB trigger bilan taqiqlangan, DELETE faqat foydalanuvchi o'chirilganda (cascade).
+model XpLedger {
+  id            String      @id @default(uuid())
+  userId        String
+  kind          XpEntryKind @default(EARN)
+  eventType     XpEventType
+  /// Manba: dars id, mavzu id (mavzu/test hodisalari)
+  sourceId      String
+  topicId       String?
+  /// Siyosat bo'yicha bazaviy XP (koeffitsiyentgacha)
+  baseXp        Int
+  /// Qo'llangan koeffitsiyent (bazis punkt, 10000 = 100%) — snapshot
+  multiplierBp  Int
+  /// Haqiqatan berilgan butun XP
+  grantedXp     Int
+  /// Takroriy hodisani bloklaydi (masalan lesson:{userId}:{lessonId})
+  dedupeKey     String      @unique
+  policyVersion String
+  /// Asia/Tashkent bo'yicha sana (YYYY-MM-DD)
+  dayKey        String
+  /// Mavzuning o'sha kundagi tartibi (1,2,3...)
+  topicDayOrd   Int?
+  balanceAfter  Int
+  totalAfter    Int
+  meta          Json        @default("{}")
+  createdAt     DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, dayKey, topicId])
+}
+
+/// Foydalanuvchi mavzusining kundagi tartibi: birinchi haqiqiy XP hodisasida belgilanadi va o'zgarmaydi.
+model XpTopicDay {
+  userId    String
+  dayKey    String
+  topicId   String
+  ord       Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, dayKey, topicId])
+  @@unique([userId, dayKey, ord])
+}
+
+/// Mavzu BIRINCHI marta tugatilganini ishonchli saqlaydi: keyin dars qo'shilsa ham mavzu XP takrorlanmaydi.
+/// source = LESSONS (XP berilgan) | BACKFILL (migratsiyada mavjud tarixdan belgilangan, XP berilmagan).
+model TopicCompletion {
+  userId      String
+  topicId     String
+  completedAt DateTime @default(now())
+  source      String   @default("LESSONS")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+}
+
+/// Mavzu testi (mavzuga bitta): savollar versiyalarda, natija backend'da hisoblanadi.
+model TopicQuiz {
+  id        String   @id @default(uuid())
+  topicId   String   @unique
+  authorId  String
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic    Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author   User          @relation("QuizAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  versions QuizVersion[]
+}
+
+/// DRAFT: har test uchun bitta (rev — optimistic lock). PUBLISHED: o'zgarmas snapshot; eng so'nggisi amal qiladi.
+model QuizVersion {
+  id          String              @id @default(uuid())
+  quizId      String
+  status      LessonVersionStatus
+  rev         Int                 @default(1)
+  /// [{ id, text, options: [{ id, text }], correctId }]
+  questions   Json
+  createdAt   DateTime            @default(now())
+  publishedAt DateTime?
+
+  quiz     TopicQuiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  attempts QuizAttempt[]
+
+  @@index([quizId, status])
+}
+
+model QuizAttempt {
+  id           String   @id @default(uuid())
+  userId       String
+  versionId    String
+  /// { [questionId]: optionId }
+  answers      Json
+  correctCount Int
+  total        Int
+  scorePct     Int
+  createdAt    DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version QuizVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, versionId])
 }

@@ -3,6 +3,7 @@ import type { CosmeticKind, Prisma, Rarity } from '@prisma/client';
 import type { PublicUser } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CatalogQueryDto, EquipDto, UpdateProfileDto } from './dto';
+import { levelFor } from '../xp/xp.engine';
 import { SLOT_BY_KIND, equipError, initials, publicProfileView } from './profile.rules';
 
 /** IZL mukofotlari: faqat rejalashtirilgan yo'nalishlar. Narx, mavjudlik va yetkazib berish va'dasi YO'Q. */
@@ -97,6 +98,8 @@ export class ProfileService {
         showStats: profile?.showStats ?? false,
       },
       wallet,
+      /** Daraja jami XP (kamaymaydi) bo'yicha; XP tarixi: GET /api/xp/history */
+      xp: { level: levelFor(wallet.totalXpEarned) },
       equipped,
       stats,
       achievements: achievements.map((a) => ({
@@ -148,8 +151,16 @@ export class ProfileService {
       redirectedFrom,
       equipped,
       stats: stats && { completedLessons: stats.completedLessons, directions: stats.directions, streak: stats.streak },
+      /** Progress ma'lumoti: faqat o'quv statistikasini ko'rsatishga ruxsat bo'lsa (balans hech qachon) */
+      level: base.showStats ? await this.publicLevel(user.id) : null,
       achievements: achievements?.map((a) => ({ slug: a.achievement.slug, name: a.achievement.name, earnedAt: a.earnedAt })) ?? null,
     };
+  }
+
+  private async publicLevel(userId: string) {
+    const w = await this.prisma.wallet.findUnique({ where: { userId }, select: { totalXpEarned: true } });
+    const l = levelFor(w?.totalXpEarned ?? 0);
+    return { level: l.level, title: l.title };
   }
 
   // ───── Mukofotlar ─────

@@ -11,6 +11,7 @@ import type { PublicUser } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfileService } from '../profile/profile.service';
 import { QuizService } from '../quiz/quiz.service';
+import { AchievementsService } from '../achievements/achievements.service';
 import { XpService } from './xp.service';
 
 const RUN = process.env.RUN_DB_TESTS === '1';
@@ -20,7 +21,8 @@ describe('XP integratsiya (PostgreSQL)', { skip: !RUN }, () => {
   const prisma = new PrismaService();
   const xp = new XpService(prisma);
   const learningStub = { topic: async () => ({}) } as never;
-  const quiz = new QuizService(prisma, learningStub, xp);
+  const achievements = new AchievementsService(prisma);
+  const quiz = new QuizService(prisma, learningStub, xp, achievements);
   const profile = new ProfileService(prisma);
 
   const userIds: string[] = [];

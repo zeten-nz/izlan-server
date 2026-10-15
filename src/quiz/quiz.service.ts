@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { quizTiersReached, scorePct } from '../xp/xp.engine';
 import { ACTIVE_XP_POLICY } from '../xp/xp.policy';
 import { XpService } from '../xp/xp.service';
+import { AchievementsService } from '../achievements/achievements.service';
 import { grade, parseQuestions, studentView, type QuizQuestion } from './quiz.rules';
 
 /** Mavzu testi: ustoz boshqaruvi (vakolat tekshiruvi bilan) va o'quvchi topshirishi (backend baholaydi, XP beradi). */
@@ -15,6 +16,7 @@ export class QuizService {
     private readonly prisma: PrismaService,
     private readonly learning: LearningService,
     private readonly xp: XpService,
+    private readonly achievements: AchievementsService,
   ) {}
 
   // ───────────── Ustoz / admin ─────────────
@@ -183,7 +185,9 @@ export class QuizService {
         );
       }
       const award = await this.xp.award(tx, userId, events);
+      const earnedBadges = await this.achievements.evaluateInTx(tx, userId, 'quiz-submit');
       return {
+        achievements: earnedBadges,
         scorePct: pct,
         correct: g.correct,
         total: g.total,

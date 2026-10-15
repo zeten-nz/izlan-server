@@ -3,6 +3,7 @@ import { Prisma, type CosmeticKind, type CosmeticStatus, type Rarity } from '@pr
 import { PrismaService } from '../prisma/prisma.service';
 import { designMatchesKind } from '../profile/cosmetic-registry';
 import type { CosmeticDto, UpdateCosmeticDto } from '../profile/dto';
+import { RECOMMENDED_PRICE_RANGE, checkPrice } from '../xp/price.policy';
 
 /**
  * Bezaklar katalogi (admin). O'chirish YO'Q: katalogdan olib tashlash = DISABLED (egalik saqlanadi).
@@ -12,8 +13,17 @@ import type { CosmeticDto, UpdateCosmeticDto } from '../profile/dto';
 export class CosmeticsAdminService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list() {
-    return this.prisma.cosmeticItem.findMany({ orderBy: [{ kind: 'asc' }, { createdAt: 'desc' }] });
+  async list() {
+    const items = await this.prisma.cosmeticItem.findMany({ orderBy: [{ kind: 'asc' }, { createdAt: 'desc' }] });
+    // Narx tavsiya diapazoni (qat'iy cheklov emas) va xaridlar soni
+    const sold = await this.prisma.xpPurchase.groupBy({ by: ['itemId'], _count: { _all: true } });
+    const soldBy = new Map(sold.map((s) => [s.itemId, s._count._all]));
+    return items.map((i) => ({
+      ...i,
+      recommended: RECOMMENDED_PRICE_RANGE[i.rarity],
+      priceInRange: i.priceXp === null ? null : checkPrice(i.priceXp, i.rarity).ok && (checkPrice(i.priceXp, i.rarity) as { inRange: boolean }).inRange,
+      purchases: soldBy.get(i.id) ?? 0,
+    }));
   }
 
   async create(actorId: string, dto: CosmeticDto) {
@@ -52,6 +62,14 @@ export class CosmeticsAdminService {
     }
     const preview = dto.previewKey ? { key: dto.previewKey } : (cur.preview as Prisma.JsonObject);
     const nextStatus = (dto.status as CosmeticStatus | undefined) ?? cur.status;
+    const nextRarity = (dto.rarity as Rarity | undefined) ?? cur.rarity;
+    // Narx faqat serverda tekshiriladi; avvalgi xaridlar o'zgarmaydi (XpPurchase.pricePaid snapshot)
+    let priceInfo: { inRange: boolean; recommended: { min: number; max: number } } | null = null;
+    if (dto.priceXp !== undefined) {
+      const pc = checkPrice(dto.priceXp, nextRarity);
+      if (!pc.ok) throw new UnprocessableEntityException(pc.error);
+      priceInfo = { inRange: pc.inRange, recommended: pc.recommended };
+    }
     const key = (preview as { key?: string }).key;
     if (nextStatus === 'ACTIVE' && !(key && designMatchesKind(key, cur.kind))) {
       throw new UnprocessableEntityException("Faollashtirish uchun preview kaliti kerak");
@@ -70,9 +88,20 @@ export class CosmeticsAdminService {
         },
       });
       await tx.auditLog.create({
-        data: { actorId, action: 'cosmetic.update', entity: 'CosmeticItem', entityId: id, meta: { fields: Object.keys(dto), from: cur.status, to: item.status } },
+        data: {
+          actorId,
+          action: dto.priceXp !== undefined ? 'cosmetic.price' : 'cosmetic.update',
+          entity: 'CosmeticItem',
+          entityId: id,
+          meta: {
+            fields: Object.keys(dto),
+            from: cur.status,
+            to: item.status,
+            ...(dto.priceXp !== undefined && { priceFrom: cur.priceXp, priceTo: item.priceXp, inRange: priceInfo?.inRange ?? true }),
+          },
+        },
       });
-      return item;
+      return { ...item, priceCheck: priceInfo };
     });
   }
 }

@@ -44,7 +44,7 @@ export class CosmeticDto {
   @IsIn(RARITY) rarity!: string;
   @IsString() @MaxLength(60) name!: string;
   @IsOptional() @IsString() @MaxLength(300) description?: string;
-  @IsOptional() @IsInt() @Min(0) @Max(10_000_000) priceXp?: number | null;
+  @IsOptional() @IsInt({ message: "Narx butun son bo'lsin" }) @Min(1, { message: "Narx noldan katta bo'lsin" }) @Max(10_000_000) priceXp?: number | null;
   @IsOptional() @IsString() @MaxLength(60) season?: string | null;
   /** Faqat qisqa token: klient shu kalit bo'yicha o'z vizualini chizadi */
   @IsOptional() @IsIn(DESIGN_KEYS, { message: "Dizayn kaliti ruxsat etilmagan" }) previewKey?: string;
@@ -54,7 +54,7 @@ export class UpdateCosmeticDto {
   @IsOptional() @IsIn(RARITY) rarity?: string;
   @IsOptional() @IsString() @MaxLength(60) name?: string;
   @IsOptional() @IsString() @MaxLength(300) description?: string;
-  @IsOptional() @IsInt() @Min(0) @Max(10_000_000) priceXp?: number | null;
+  @IsOptional() @IsInt({ message: "Narx butun son bo'lsin" }) @Min(1, { message: "Narx noldan katta bo'lsin" }) @Max(10_000_000) priceXp?: number | null;
   @IsOptional() @IsString() @MaxLength(60) season?: string | null;
   @IsOptional() @IsIn(DESIGN_KEYS, { message: "Dizayn kaliti ruxsat etilmagan" }) previewKey?: string;
   @IsOptional() @IsIn(['DRAFT', 'ACTIVE', 'DISABLED']) status?: string;

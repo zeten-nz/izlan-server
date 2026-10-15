@@ -6,6 +6,7 @@ import { isInteractive, parseDoc, type LessonDoc } from './doc.schema';
 import { checkAnswer, projectPage, requiredProgress, reviewProgress, unlockedCount, type AttemptState } from './player';
 import { isContentPreparing, isTopicCompleted } from '../learning/progress';
 import { XpService } from '../xp/xp.service';
+import { AchievementsService } from '../achievements/achievements.service';
 
 @Injectable()
 export class StudentLessonsService {
@@ -13,6 +14,7 @@ export class StudentLessonsService {
     private readonly prisma: PrismaService,
     private readonly learning: LearningService,
     private readonly xp: XpService,
+    private readonly achievements: AchievementsService,
   ) {}
 
   /** Mavzudagi nashr qilingan darslar (mavzu o'quvchiga ochiq bo'lsa). Tartib: sortOrder, createdAt, id. */
@@ -229,7 +231,7 @@ export class StudentLessonsService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId + ':' + lessonId}, 0))`;
 
       const existing = await this.firstCompletion(tx, userId, lessonId);
-      if (existing?.completedAt) return { completed: true, completedAt: existing.completedAt, firstTime: false, xp: null };
+      if (existing?.completedAt) return { completed: true, completedAt: existing.completedAt, firstTime: false, xp: null, achievements: [] };
 
       const { allDone } = unlockedCount(doc, await this.attemptMap(userId, version.id, tx));
       if (!allDone) throw new ConflictException('Avval barcha majburiy sahifalarni bajaring');
@@ -244,7 +246,9 @@ export class StudentLessonsService {
       await this.learning.advanceAfterCompletion(tx, userId, lesson.topicId);
       // XP shu tranzaksiyada: tugatish va mukofot birga yoziladi yoki birga qaytariladi
       const xp = await this.xp.onLessonFirstCompleted(tx, userId, { id: lesson.id, topicId: lesson.topicId }, now);
-      return { completed: true, completedAt: now, firstTime: true, xp };
+      // Badge: shu tranzaksiyada (savepoint ichida), xato o'quv oqimini buzmaydi
+      const earnedBadges = await this.achievements.evaluateInTx(tx, userId, 'lesson-complete');
+      return { completed: true, completedAt: now, firstTime: true, xp, achievements: earnedBadges };
     });
   }
 }

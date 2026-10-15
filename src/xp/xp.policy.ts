@@ -3,7 +3,7 @@
  * koeffitsiyent snapshot'ini saqlaydi, shuning uchun siyosat o'zgarsa eski yozuvlar buzilmaydi: yangi versiya qo'shiladi,
  * `ACTIVE_XP_POLICY` o'zgartiriladi, eskisi o'chirilmaydi.
  */
-export type XpEventType = 'LESSON_COMPLETE' | 'TOPIC_COMPLETE' | 'QUIZ_TIER' | 'NOTE_VERIFIED';
+export type XpEventType = 'LESSON_COMPLETE' | 'TOPIC_COMPLETE' | 'QUIZ_TIER' | 'NOTE_VERIFIED' | 'PURCHASE';
 
 export interface XpPolicy {
   version: string;
@@ -29,6 +29,8 @@ export const XP_POLICY_V1: XpPolicy = {
     QUIZ_TIER: { enabled: true, baseXp: 0 },
     // Konspekt mazmunini ishonchli tekshiradigan mexanizm yo'q: o'chirilgan
     NOTE_VERIFIED: { enabled: false, baseXp: 5 },
+    // Xarid (SPEND) XpService.grant orqali EMAS, ShopService orqali yoziladi; grant() uni hech qachon bermaydi
+    PURCHASE: { enabled: false, baseXp: 0 },
   },
   quizTiers: [
     { minPct: 60, xp: 10 },

@@ -102,12 +102,16 @@ export class ProfileService {
       xp: { level: levelFor(wallet.totalXpEarned) },
       equipped,
       stats,
-      achievements: achievements.map((a) => ({
-        slug: a.achievement.slug,
-        name: a.achievement.name,
-        description: a.achievement.description,
-        earnedAt: a.earnedAt,
-      })),
+      achievements: achievements
+        .slice()
+        .sort((a, b) => (a.showcaseOrder ?? 99) - (b.showcaseOrder ?? 99) || a.earnedAt.getTime() - b.earnedAt.getTime())
+        .map((a) => ({
+          slug: a.achievement.slug,
+          name: a.achievement.name,
+          description: a.achievement.description,
+          earnedAt: a.earnedAt,
+          showcaseOrder: a.showcaseOrder,
+        })),
     };
   }
 
@@ -153,7 +157,12 @@ export class ProfileService {
       stats: stats && { completedLessons: stats.completedLessons, directions: stats.directions, streak: stats.streak },
       /** Progress ma'lumoti: faqat o'quv statistikasini ko'rsatishga ruxsat bo'lsa (balans hech qachon) */
       level: base.showStats ? await this.publicLevel(user.id) : null,
-      achievements: achievements?.map((a) => ({ slug: a.achievement.slug, name: a.achievement.name, earnedAt: a.earnedAt })) ?? null,
+      // Faqat showAchievements ruxsat berganda; asosiy (showcase) badge'lar birinchi, so'ng qolganlari
+      achievements:
+        achievements
+          ?.slice()
+          .sort((a, b) => (a.showcaseOrder ?? 99) - (b.showcaseOrder ?? 99) || a.earnedAt.getTime() - b.earnedAt.getTime())
+          .map((a) => ({ slug: a.achievement.slug, name: a.achievement.name, earnedAt: a.earnedAt, showcase: a.showcaseOrder !== null })) ?? null,
     };
   }
 
@@ -176,8 +185,13 @@ export class ProfileService {
     const own = new Set(owned.map((o) => o.itemId));
     return {
       /** Xarid hozircha yoqilmagan */
-      purchasesEnabled: false,
-      items: items.map((i) => ({ ...itemView(i), owned: own.has(i.id), status: own.has(i.id) ? 'OWNED' : 'COMING_SOON' })),
+      purchasesEnabled: true,
+      /** priceXp: serverdagi joriy narx; status: OWNED | AVAILABLE | NO_PRICE */
+      items: items.map((i) => ({
+        ...itemView(i),
+        owned: own.has(i.id),
+        status: own.has(i.id) ? 'OWNED' : i.priceXp === null ? 'NO_PRICE' : 'AVAILABLE',
+      })),
     };
   }
 

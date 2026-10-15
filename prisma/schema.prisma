@@ -50,6 +50,7 @@ model User {
   achievements UserAchievement[]
 
   xpLedger         XpLedger[]
+  xpPurchases      XpPurchase[]
   xpTopicDays      XpTopicDay[]
   topicCompletions TopicCompletion[]
   quizAttempts     QuizAttempt[]
@@ -546,7 +547,8 @@ model CosmeticItem {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  owners CosmeticOwnership[]
+  owners    CosmeticOwnership[]
+  purchases XpPurchase[]
 
   @@index([kind, status])
 }
@@ -594,6 +596,11 @@ model UserAchievement {
   userId        String
   achievementId String
   earnedAt      DateTime @default(now())
+  /// Berilish sababi: qaysi ko'rsatkich va qiymat (audit uchun)
+  reason        Json     @default("{}")
+  ruleVersion   String   @default("ach-v1")
+  /// Profilda asosiy badge sifatida belgilangan tartib (1..3), null = belgilanmagan
+  showcaseOrder Int?
 
   user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   achievement AchievementDefinition @relation(fields: [achievementId], references: [id], onDelete: Restrict)
@@ -623,6 +630,8 @@ enum XpEventType {
   TOPIC_COMPLETE
   QUIZ_TIER
   NOTE_VERIFIED
+  /// XP do'konidan bezak xaridi (kind = SPEND)
+  PURCHASE
 }
 
 /// EARN hozir yagona ishlatiladi; SPEND/ADJUST kelajakdagi xarid va tuzatishlar uchun zaxira (grantedXp <= 0).
@@ -634,35 +643,59 @@ enum XpEntryKind {
 
 /// Append-only XP jurnali: UPDATE DB trigger bilan taqiqlangan, DELETE faqat foydalanuvchi o'chirilganda (cascade).
 model XpLedger {
-  id            String      @id @default(uuid())
-  userId        String
-  kind          XpEntryKind @default(EARN)
-  eventType     XpEventType
+  id             String      @id @default(uuid())
+  userId         String
+  kind           XpEntryKind @default(EARN)
+  eventType      XpEventType
   /// Manba: dars id, mavzu id (mavzu/test hodisalari)
-  sourceId      String
-  topicId       String?
+  sourceId       String
+  topicId        String?
   /// Siyosat bo'yicha bazaviy XP (koeffitsiyentgacha)
-  baseXp        Int
+  baseXp         Int
   /// Qo'llangan koeffitsiyent (bazis punkt, 10000 = 100%) — snapshot
-  multiplierBp  Int
+  multiplierBp   Int
   /// Haqiqatan berilgan butun XP
-  grantedXp     Int
+  grantedXp      Int
   /// Takroriy hodisani bloklaydi (masalan lesson:{userId}:{lessonId})
-  dedupeKey     String      @unique
-  policyVersion String
+  dedupeKey      String      @unique
+  policyVersion  String
   /// Asia/Tashkent bo'yicha sana (YYYY-MM-DD)
-  dayKey        String
+  dayKey         String
   /// Mavzuning o'sha kundagi tartibi (1,2,3...)
-  topicDayOrd   Int?
-  balanceAfter  Int
-  totalAfter    Int
-  meta          Json        @default("{}")
-  createdAt     DateTime    @default(now())
+  topicDayOrd    Int?
+  /// SPEND: sotib olingan bezak va to'langan narx (snapshot; keyingi narx o'zgarishidan mustaqil)
+  cosmeticItemId String?
+  pricePaid      Int?
+  balanceAfter   Int
+  totalAfter     Int
+  meta           Json        @default("{}")
+  createdAt      DateTime    @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchase XpPurchase?
 
   @@index([userId, createdAt])
   @@index([userId, dayKey, topicId])
+}
+
+/// XP bilan bezak xaridi: har (foydalanuvchi, niyat kaliti) uchun bitta; (foydalanuvchi, bezak) ham bitta.
+model XpPurchase {
+  id             String   @id @default(uuid())
+  userId         String
+  itemId         String
+  /// Mijoz har xarid niyati uchun yuboradigan kalit
+  idempotencyKey String
+  pricePaid      Int
+  ledgerId       String   @unique
+  createdAt      DateTime @default(now())
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item   CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  ledger XpLedger     @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@unique([userId, itemId])
+  @@index([userId, createdAt])
 }
 
 /// Foydalanuvchi mavzusining kundagi tartibi: birinchi haqiqiy XP hodisasida belgilanadi va o'zgarmaydi.

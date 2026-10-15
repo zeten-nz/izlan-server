@@ -21,7 +21,18 @@ class PageDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number;
 }
 
-/** XP do'koni (faqat o'quvchi). userId sessiyadan; XP miqdori so'rovda YO'Q. */
+/**
+ * XP do'koni (faqat o'quvchi). userId sessiyadan; XP miqdori so'rovda YO'Q.
+ *
+ * `POST /rewards/cosmetics/:id/purchase` kontrakti (idempotent):
+ *  - `idempotencyKey` har xarid NIYATI uchun; (foydalanuvchi, kalit) bo'yicha noyob.
+ *  - Kalit avval ISHLATILGAN bo'lsa: shu bezak uchun avvalgi natija qaytadi (`replay: true`, 200), XP qayta yechilmaydi.
+ *    Bunda `expectedPrice`, joriy narx, bezak holati (DISABLED) va balans QAYTA TEKSHIRILMAYDI: replay allaqachon
+ *    yakunlangan xarid. Boshqa bezak bilan kalit → 409 `KEY_REUSED`.
+ *  - Birinchi bajarilishda tartib: bezak bor → ACTIVE (`NOT_AVAILABLE`) → narx bor (`NO_PRICE`) → egalik yo'q
+ *    (`ALREADY_OWNED`) → `expectedPrice` mos (`PRICE_CHANGED`, javobda joriy `price`) → balans (`INSUFFICIENT_XP`).
+ *  - `expectedPrice` yechiladigan summa EMAS; yechiladigan narx faqat serverdagi `priceXp`.
+ */
 @Controller('rewards')
 @UseGuards(SessionGuard, RolesGuard)
 @Roles('STUDENT')

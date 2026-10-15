@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ACHIEVEMENT_RULES_V1, ACHIEVEMENT_RULES_VERSION, SHOWCASE_MAX, evaluateRules, type Metrics } from './achievement.rules';
@@ -177,7 +177,7 @@ export class AchievementsService {
   async adminSetActive(actorId: string, id: string, active: boolean) {
     return this.prisma.$transaction(async (tx) => {
       const cur = await tx.achievementDefinition.findUnique({ where: { id } });
-      if (!cur) throw new UnprocessableEntityException('Achievement topilmadi');
+      if (!cur) throw new NotFoundException('Achievement topilmadi');
       const hasRule = ACHIEVEMENT_RULES_V1.some((r) => r.slug === cur.slug);
       if (active && !hasRule) throw new UnprocessableEntityException("Bu achievement uchun qoida yo'q: faollashtirib bo'lmaydi");
       const upd = await tx.achievementDefinition.update({ where: { id }, data: { active } });

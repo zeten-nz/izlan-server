@@ -133,6 +133,35 @@ describe('XP do‘koni + achievement (PostgreSQL)', { skip: !RUN }, () => {
     assert.equal((await wallet(u.id)).xpBalance, 900);
   });
 
+  test('replay kontrakti: expectedPrice boshqacha, narx o‘zgargan yoki bezak DISABLED bo‘lsa ham avvalgi natija qaytadi', async () => {
+    const u = await withXp(1000);
+    const item = await mkItem(100);
+    const k = key();
+    const first = await shop.purchase(u.id, item.id, { idempotencyKey: k, expectedPrice: 100 });
+
+    // 1) expectedPrice boshqacha
+    const a = await shop.purchase(u.id, item.id, { idempotencyKey: k, expectedPrice: 777 });
+    assert.equal(a.replay, true);
+    assert.equal(a.purchaseId, first.purchaseId);
+    assert.equal(a.pricePaid, 100);
+
+    // 2) narx o‘zgargan
+    await prisma.cosmeticItem.update({ where: { id: item.id }, data: { priceXp: 900 } });
+    const b = await shop.purchase(u.id, item.id, { idempotencyKey: k, expectedPrice: 900 });
+    assert.equal(b.replay, true);
+    assert.equal(b.pricePaid, 100, 'eski narx snapshot\x27i');
+
+    // 3) mahsulot DISABLED
+    await prisma.cosmeticItem.update({ where: { id: item.id }, data: { status: 'DISABLED' } });
+    const c = await shop.purchase(u.id, item.id, { idempotencyKey: k });
+    assert.equal(c.replay, true);
+
+    // Yangi kalit = yangi niyat: bezak DISABLED, shuning uchun rad etiladi (tekshiruv tartibi: holat egalikdan oldin)
+    assert.equal(await code(shop.purchase(u.id, item.id, { idempotencyKey: key() })), 'NOT_AVAILABLE');
+    assert.equal((await wallet(u.id)).xpBalance, 900, 'hech qaysi replay XP yechmadi');
+    assert.equal(await prisma.xpLedger.count({ where: { userId: u.id, kind: 'SPEND' } }), 1);
+  });
+
   test('boshqa foydalanuvchi kalitidan foydalana olmaydi (kalit foydalanuvchiga bog‘liq)', async () => {
     const u1 = await withXp(500);
     const u2 = await withXp(500);

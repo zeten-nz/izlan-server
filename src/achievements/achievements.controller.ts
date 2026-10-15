@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Patch, Put, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ArrayMaxSize, IsArray, IsBoolean, IsString, Matches } from 'class-validator';
 import type { PublicUser } from '../auth/auth.service';
@@ -16,6 +16,15 @@ class ShowcaseDto {
 
 class ActiveDto {
   @IsBoolean() active!: boolean;
+}
+
+/**
+ * Achievement id: DB da UUID emas, barqaror matnli id (masalan `ach-first-step`; migratsiyada belgilangan).
+ * Shuning uchun UUID emas, xavfsiz belgilar to'plamiga mos kelishi tekshiriladi.
+ */
+class AchievementIdParam {
+  @Matches(/^[A-Za-z0-9_-]{1,64}$/, { message: "Achievement identifikatori noto'g'ri" })
+  id!: string;
 }
 
 /** O'quvchi: o'z badge'lari. Badge berish endpointi YO'Q: faqat server o'quv hodisalari orqali beriladi. */
@@ -52,7 +61,7 @@ export class AdminAchievementsController {
 
   @Patch(':id')
   @HttpCode(200)
-  setActive(@CurrentUser() user: PublicUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ActiveDto) {
-    return this.ach.adminSetActive(user.id, id, dto.active);
+  setActive(@CurrentUser() user: PublicUser, @Param() p: AchievementIdParam, @Body() dto: ActiveDto) {
+    return this.ach.adminSetActive(user.id, p.id, dto.active);
   }
 }

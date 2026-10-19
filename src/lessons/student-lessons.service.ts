@@ -3,6 +3,7 @@ import { Prisma, type LessonVersion } from '@prisma/client';
 import { LearningService } from '../learning/learning.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { isInteractive, parseDoc, type LessonDoc } from './doc.schema';
+import { GrammarService } from '../grammar/grammar.service';
 import { checkAnswer, projectPage, requiredProgress, reviewProgress, unlockedCount, type AttemptState } from './player';
 import { isContentPreparing, isTopicCompleted } from '../learning/progress';
 import { XpService } from '../xp/xp.service';
@@ -15,7 +16,14 @@ export class StudentLessonsService {
     private readonly learning: LearningService,
     private readonly xp: XpService,
     private readonly achievements: AchievementsService,
+    private readonly grammar: GrammarService,
   ) {}
+
+  /** Grammatika havolalarini serverning o'z reyestri bo'yicha hal qiladi (reyestr yaroqsiz bo'lsa: hammasi "mavjud emas"). */
+  private async grammarResolver() {
+    const reg = await this.grammar.getRegistry();
+    return reg ? (ruleId: string) => reg.resolveForPlayer(ruleId) : undefined;
+  }
 
   /** Mavzudagi nashr qilingan darslar (mavzu o'quvchiga ochiq bo'lsa). Tartib: sortOrder, createdAt, id. */
   async listForTopic(userId: string, topicId: string) {
@@ -107,6 +115,7 @@ export class StudentLessonsService {
   }
 
   private buildView(
+    resolver: Awaited<ReturnType<StudentLessonsService["grammarResolver"]>>,
     lesson: { id: string; title: string; topicId: string },
     versionId: string,
     doc: LessonDoc,
@@ -136,7 +145,7 @@ export class StudentLessonsService {
         review: { total: review.total, seen: review.seen, pct: review.pct },
         required: requiredProgress(doc, attempts),
       },
-      pages: doc.pages.slice(0, count).map(projectPage),
+      pages: doc.pages.slice(0, count).map((p) => projectPage(p, resolver)),
       attempts: Object.fromEntries(
         [...attempts]
           .filter(([id]) => visibleIds.has(id))
@@ -157,7 +166,7 @@ export class StudentLessonsService {
     const { lesson, version, doc, completedAt } = await this.resolveVersion(userId, lessonId);
     const progress = await this.ensureProgress(userId, version.id);
     const attempts = await this.attemptMap(userId, version.id);
-    return this.buildView(lesson, version.id, doc, attempts, progress, !!completedAt || !!progress.completedAt);
+    return this.buildView(await this.grammarResolver(), lesson, version.id, doc, attempts, progress, !!completedAt || !!progress.completedAt);
   }
 
   async answer(userId: string, lessonId: string, blockId: string, payload: unknown) {
@@ -193,7 +202,7 @@ export class StudentLessonsService {
     const progress = await this.ensureProgress(userId, version.id);
     return {
       result,
-      view: this.buildView(lesson, version.id, doc, await this.attemptMap(userId, version.id), progress, !!completedAt || !!progress.completedAt),
+      view: this.buildView(await this.grammarResolver(), lesson, version.id, doc, await this.attemptMap(userId, version.id), progress, !!completedAt || !!progress.completedAt),
     };
   }
 

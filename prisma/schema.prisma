@@ -772,3 +772,225 @@ model QuizAttempt {
 
   @@index([userId, versionId])
 }
+
+// ───────────── Grammar Library (PostgreSQL — yagona manba; ADR-001) ─────────────
+// Foydalanuvchi ID'lari (authorId, approvedById, actorId ...) ataylab FK'siz: audit/tarix foydalanuvchi o'chirilsa ham saqlanadi.
+// Immutability/append-only qoidalari DB trigger'lari bilan (migration SQL).
+
+enum GrammarRevisionStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  REJECTED
+  APPROVED
+}
+
+enum GrammarRuleState {
+  OPEN
+  RETIRED
+}
+
+enum GrammarProvenance {
+  AI_DRAFT
+  ORIGINAL
+  EXTERNAL
+  MIXED
+  UNKNOWN
+}
+
+enum GrammarActivationAction {
+  ACTIVATE
+  ROLLBACK
+}
+
+enum GrammarOverlayAction {
+  HIDE
+  UNHIDE
+}
+
+/// Til konfiguratsiyasi (release'ga muzlatiladi).
+model GrammarLanguage {
+  code        String   @id
+  name        String
+  nativeName  String   @default("")
+  dir         String   @default("ltr")
+  /// Ruxsat etilgan blok turlari (table, conjugation, declension)
+  blocks      String[]
+  enabled     Boolean  @default(false)
+  levelSystem String   @default("none")
+  scripts     String[]
+  categories  Json     @default("[]")
+  updatedAt   DateTime @updatedAt
+}
+
+/// Barqaror identifikatsiya. `id` (gr_<til>_<6 raqam>) o'zgarmas va qayta ishlatilmaydi.
+model GrammarRule {
+  id             String           @id
+  lang           String
+  slug           String
+  category       String
+  levelSystem    String?
+  levelValue     String?
+  levelConfirmed Boolean          @default(false)
+  state          GrammarRuleState @default(OPEN)
+  /// Retire qilinganda almashtiruvchi qoida (release'da kuchga kiradi)
+  replacedById   String?
+  retiredReason  String?
+  createdById    String?
+  /// createdById yo'q bo'lganda provenance yorlig'i (masalan "AI qoralama (Claude), tekshirilmagan")
+  createdLabel   String?
+  /// Soft delete: faqat hech qachon approved bo'lmagan qoida. Slug bo'shatiladi (asl slug deletedSlug'da).
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedReason  String?
+  deletedSlug    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  revisions GrammarRevision[]
+  aliases   GrammarSlugAlias[]
+
+  @@unique([lang, slug])
+  @@index([createdById])
+  @@index([lang, state])
+}
+
+model GrammarSlugAlias {
+  id        String      @id @default(uuid())
+  ruleId    String
+  lang      String
+  slug      String
+  createdAt DateTime    @default(now())
+  rule      GrammarRule @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+
+  @@unique([lang, slug])
+  @@index([ruleId])
+}
+
+/// ID ajratish hisoblagichi (advisory lock ostida oshiriladi; qiymat hech qachon kamaymaydi).
+model GrammarIdCounter {
+  lang String @id
+  next Int    @default(1)
+}
+
+/// Qoida versiyasi. IN_REVIEW/APPROVED/REJECTED holatida `content` o'zgarmaydi (DB trigger).
+model GrammarRevision {
+  id                   String                @id @default(uuid())
+  ruleId               String
+  explanationLang      String
+  revisionNo           Int
+  status               GrammarRevisionStatus @default(DRAFT)
+  /// Optimistik qulf (faqat DRAFT/CHANGES_REQUESTED tahririda oshadi)
+  rev                  Int                   @default(1)
+  /// Tuzilishi server/src/grammar/content.schema.ts da (title, summary, formulas, examples, ..., body)
+  content              Json
+  contentSchemaVersion Int                   @default(1)
+  contentHash          String
+  provenance           GrammarProvenance     @default(UNKNOWN)
+  authorId             String?
+  authorLabel          String?
+  lastEditedById       String?
+  submittedAt          DateTime?
+  /// Admin tasdig'i
+  approvedById         String?
+  approvedAt           DateTime?
+  /// Admin ko'rgan va tasdiqlagan kontent xeshi (= contentHash)
+  approvedHash         String?
+  selfApproved         Boolean               @default(false)
+  checks               Json?
+  /// Oxirgi review izohi (tuzatish talablari/rad sababi)
+  reviewNote           String?
+  deletedAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  rule  GrammarRule          @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  items GrammarReleaseItem[]
+
+  @@unique([ruleId, explanationLang, revisionNo])
+  @@index([status])
+  @@index([authorId])
+}
+
+/// Append-only workflow/audit tarixi (UPDATE/DELETE trigger bilan taqiqlangan).
+model GrammarReviewEvent {
+  id         String   @id @default(uuid())
+  ruleId     String
+  revisionId String?
+  actorId    String?
+  action     String
+  fromStatus String?
+  toStatus   String?
+  note       String?
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([ruleId, createdAt])
+  @@index([revisionId])
+}
+
+/// Immutable release snapshot.
+model GrammarRelease {
+  id                   String   @id @default(uuid())
+  seq                  Int      @unique @default(autoincrement())
+  createdById          String?
+  note                 String?
+  contentSchemaVersion Int      @default(1)
+  /// Til konfiguratsiyasi snapshot'i
+  languages            Json
+  snapshotHash         String
+  /// Darvozalar natijasi, diff va ta'sir tahlili
+  validation           Json     @default("{}")
+  baseReleaseId        String?
+  createdAt            DateTime @default(now())
+
+  items GrammarReleaseItem[]
+}
+
+model GrammarReleaseItem {
+  releaseId       String
+  ruleId          String
+  explanationLang String
+  revisionId      String
+  /// Muzlatilgan rule metadata: lang, slug, category, level, state, replacedById, aliases
+  meta            Json
+
+  release  GrammarRelease  @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  revision GrammarRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@id([releaseId, ruleId, explanationLang])
+  @@index([revisionId])
+}
+
+/// Append-only aktivlashtirish jurnali. Aktiv release = oxirgi qator (seq bo'yicha).
+model GrammarActivation {
+  seq               Int                     @id @default(autoincrement())
+  releaseId         String
+  action            GrammarActivationAction
+  /// Pipeline/CLI identifikatori (foydalanuvchi emas)
+  actor             String
+  reason            String
+  previousReleaseId String?
+  createdAt         DateTime                @default(now())
+}
+
+/// Append-only kill-switch jurnali: faqat ko'rsatma (HIDE/UNHIDE), kontent maydonlari YO'Q.
+model GrammarOverlayEvent {
+  seq       Int                  @id @default(autoincrement())
+  ruleId    String
+  action    GrammarOverlayAction
+  actorId   String
+  reason    String
+  createdAt DateTime             @default(now())
+
+  @@index([ruleId, seq])
+}
+
+model GrammarImportRun {
+  id         String    @id @default(uuid())
+  source     String
+  dryRun     Boolean
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  report     Json      @default("{}")
+}

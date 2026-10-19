@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { PublicUser } from '../auth/auth.service';
 import { Roles, RolesGuard } from '../auth/roles';
@@ -42,8 +42,12 @@ export class StaffLessonsController {
 
   @Post('lessons/:id/publish')
   @HttpCode(200)
-  publish(@CurrentUser() user: PublicUser, @Param('id', ParseUUIDPipe) id: string) {
-    return this.lessons.publish(user, id);
+  publish(
+    @CurrentUser() user: PublicUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Headers('x-grammar-registry') grammarRegistryVersion?: string,
+  ) {
+    return this.lessons.publish(user, id, grammarRegistryVersion);
   }
 
   @Post('lessons/:id/unpublish')

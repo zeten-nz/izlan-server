@@ -1,9 +1,11 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { GrammarService } from '../grammar/grammar.service';
 import { Prisma } from '@prisma/client';
 import type { PublicUser } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AssetsService } from './assets.service';
 import { emptyDoc, isInteractive, parseDoc, publishIssues, type LessonDoc } from './doc.schema';
+import { collectGrammarRefs, grammarIssues, registryVersionIssue } from './grammar-check';
 import { collectMediaRefs, mediaIssues } from './media-check';
 import { checkAnswer, projectPage } from './player';
 
@@ -12,6 +14,7 @@ export class StaffLessonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly assets: AssetsService,
+    private readonly grammar: GrammarService,
   ) {}
 
   private invalid(issues: { path: string; message: string }[]): UnprocessableEntityException {
@@ -126,7 +129,7 @@ export class StaffLessonsService {
     return { rev: rev + 1 };
   }
 
-  async publish(user: PublicUser, id: string) {
+  async publish(user: PublicUser, id: string, grammarRegistryVersion?: string) {
     const lesson = await this.own(user, id);
     const draft = await this.draftOf(id);
     const parsed = parseDoc(draft.doc);
@@ -137,6 +140,15 @@ export class StaffLessonsService {
     if (refs.length) {
       const { assets, files } = await this.assets.inspect(refs.map((r) => r.assetId));
       issues.push(...mediaIssues(refs, assets, files));
+    }
+    // Grammatika: faqat serverning o'z reyestriga tayanadi (hujjatdagi ID dan boshqa narsaga ishonilmaydi)
+    const grefs = collectGrammarRefs(parsed.doc);
+    if (grefs.length) {
+      const registry = await this.grammar.require(); // yaroqsiz bo'lsa 503: xavfsiz rad etish
+      // DB (release) rejimida reyestr YAGONA manba (serverning o'zi): client static fayl versiyasi bilan drift bo'lishi mumkin emas
+      const drift = this.grammar.source === 'release' ? null : registryVersionIssue(grammarRegistryVersion, registry);
+      if (drift) throw new ConflictException({ message: drift, code: 'GRAMMAR_REGISTRY_MISMATCH', serverVersion: registry.version });
+      issues.push(...grammarIssues(grefs, registry));
     }
     if (issues.length) throw this.invalid(issues);
 
@@ -189,7 +201,9 @@ export class StaffLessonsService {
     const draft = await this.draftOf(id);
     const parsed = parseDoc(draft.doc);
     if (!parsed.ok) throw this.invalid(parsed.issues);
-    return { pages: parsed.doc.pages.map(projectPage) };
+    const reg = await this.grammar.getRegistry();
+    const resolve = reg ? (ruleId: string) => reg.resolveForPlayer(ruleId) : undefined;
+    return { pages: parsed.doc.pages.map((p) => projectPage(p, resolve)) };
   }
 
   async previewAnswer(user: PublicUser, id: string, blockId: string, payload: unknown) {

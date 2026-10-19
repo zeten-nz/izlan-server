@@ -87,6 +87,19 @@ export const fillBlankBlock = z.object({
   explanation: text(1000).default(''),
 });
 
+/**
+ * Grammatika havolasi: faqat doimiy qoida ID'si saqlanadi (sarlavha/slug/til/holat hujjatda YO'Q: server reyestridan
+ * o'qiladi). Bo'sh qiymat — "hali tanlanmagan" (qoralamada ruxsat, nashrda rad etiladi).
+ */
+export const GRAMMAR_RULE_ID_RE = /^gr_[a-z]{2,3}_\d{6}$/;
+export const grammarRefBlock = z.object({
+  ...frame,
+  type: z.literal('grammarRef'),
+  grammarRuleId: z.string().max(20).regex(/^(gr_[a-z]{2,3}_\d{6})?$/).default(''),
+  /** Tugma yozuvi (ixtiyoriy); bo'sh bo'lsa standart matn. */
+  label: z.string().max(80).default(''),
+});
+
 export const blockSchema = z.discriminatedUnion('type', [
   headingBlock,
   textBlock,
@@ -95,6 +108,7 @@ export const blockSchema = z.discriminatedUnion('type', [
   audioBlock,
   choiceBlock,
   fillBlankBlock,
+  grammarRefBlock,
 ]);
 
 export const pageSchema = z.object({
@@ -190,6 +204,8 @@ export function publishIssues(doc: LessonDoc): DocIssue[] {
       } else if (b.type === 'image' || b.type === 'audio') {
         if (!b.assetId) issues.push({ path: at(bi), message: `${label}: ${b.type === 'image' ? 'rasm' : 'audio'} tanlanmagan` });
         else if (b.type === 'image' && !b.alt.trim()) issues.push({ path: at(bi), message: `${label}: rasmga tavsif (alt) yozing` });
+      } else if (b.type === 'grammarRef') {
+        if (!b.grammarRuleId) issues.push({ path: at(bi), message: `${label}: grammatika qoidasi tanlanmagan` });
       } else if (b.type === 'heading' || b.type === 'text' || b.type === 'callout') {
         if (!b.text.trim()) issues.push({ path: at(bi), message: `${label}: bo'sh matn bloki` });
       }

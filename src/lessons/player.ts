@@ -1,11 +1,16 @@
+import type { PlayerRule } from '../grammar/registry';
 import { isInteractive, type Block, type InteractiveBlock, type LessonDoc, type Page } from './doc.schema';
 
 /**
  * O'quvchi ko'rinishi: to'g'ri javoblar va izohlar hujjatdan olib tashlanadi.
  * Javob faqat serverda tekshiriladi (checkAnswer).
  */
+/** grammarRef: server reyestridan hisoblangan natija (hujjatdagi ID emas, mijoz yuborgan narsa emas). */
+export type PlayerGrammarRef = Extract<Block, { type: 'grammarRef' }> & { rule: PlayerRule };
+
 export type PlayerBlock =
-  | Exclude<Block, InteractiveBlock>
+  | Exclude<Block, InteractiveBlock | Extract<Block, { type: 'grammarRef' }>>
+  | PlayerGrammarRef
   | (Omit<Extract<Block, { type: 'choice' }>, 'correctIds' | 'explanation'>)
   | (Omit<Extract<Block, { type: 'fillblank' }>, 'blanks' | 'explanation'> & { blanks: { id: string }[] });
 
@@ -13,7 +18,12 @@ export interface PlayerPage extends Omit<Page, 'blocks'> {
   blocks: PlayerBlock[];
 }
 
-export function projectBlock(b: Block): PlayerBlock {
+/** Qoidani hal qiluvchi funksiya (reyestr yo'q/yaroqsiz bo'lsa — hamma qoida "mavjud emas"). */
+export type GrammarResolver = (ruleId: string) => PlayerRule;
+const NO_GRAMMAR: GrammarResolver = () => ({ available: false });
+
+export function projectBlock(b: Block, resolve: GrammarResolver = NO_GRAMMAR): PlayerBlock {
+  if (b.type === 'grammarRef') return { ...b, rule: b.grammarRuleId ? resolve(b.grammarRuleId) : { available: false } };
   if (b.type === 'choice') {
     const { correctIds: _c, explanation: _e, ...rest } = b;
     return rest;
@@ -25,8 +35,8 @@ export function projectBlock(b: Block): PlayerBlock {
   return b;
 }
 
-export function projectPage(p: Page): PlayerPage {
-  return { ...p, blocks: p.blocks.map(projectBlock) };
+export function projectPage(p: Page, resolve: GrammarResolver = NO_GRAMMAR): PlayerPage {
+  return { ...p, blocks: p.blocks.map((b) => projectBlock(b, resolve)) };
 }
 
 export interface AnswerResult {

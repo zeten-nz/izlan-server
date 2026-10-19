@@ -1,0 +1,99 @@
+name: CI
+
+# Server (NestJS + Prisma). Grammatika reyestri: src/grammar/grammar-registry.data.ts (client repo'sidan generatsiya qilinadi).
+on:
+  pull_request:
+  push:
+    branches: [main, "phase/**"]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Testlar (reyestr yaxlitligi, publish validatsiyasi), tip, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Build + unit testlar (ma'lumotlar bazasi talab qilinmaydi)
+        run: npm test
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+  grammar-db:
+    name: Grammatika DB integratsiya testlari (PostgreSQL xizmati, trigger/poyga/release)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: izlan_test_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/izlan_test_ci?schema=public
+      # Test bazasi nomi izlan_test* bo'lishi shart (spec asosiy bazaga ulanishdan o'zini himoya qiladi)
+      GRAMMAR_TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/izlan_test_ci?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Migratsiyalarni qo'llash (triggerlar bilan)
+        run: npx prisma migrate deploy
+      - name: Testlar (DB testlari endi o'tkazib yuborilmaydi)
+        run: npm test
+
+  registry-compat:
+    name: Client kontenti bilan moslik (ogohlantiruvchi)
+    runs-on: ubuntu-latest
+    continue-on-error: true # qat'iy darvoza: client repo'dagi release-gate workflow
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: server
+      - name: Token tekshiruvi
+        env:
+          TOKEN: ${{ secrets.CLIENT_REPO_READ_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CLIENT_REPO_READ_TOKEN sozlanmagan: cross-repo moslik tekshirilmadi (bu PASS emas)."
+            echo "SKIP_COMPAT=1" >> "$GITHUB_ENV"
+          fi
+      - name: Client repo'sini olish (faqat o'qish)
+        if: env.SKIP_COMPAT != '1'
+        uses: actions/checkout@v4
+        with:
+          repository: zeten-nz/izlan-client
+          ref: ${{ vars.CLIENT_REF || 'main' }}
+          path: client
+          token: ${{ secrets.CLIENT_REPO_READ_TOKEN }}
+          persist-credentials: false
+      - if: env.SKIP_COMPAT != '1'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - name: Yo'naltirilgan moslik
+        if: env.SKIP_COMPAT != '1'
+        working-directory: client
+        run: |
+          npm ci
+          npm run grammar:compat -- ../server/src/grammar/grammar-registry.data.ts

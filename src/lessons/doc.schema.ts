@@ -31,6 +31,8 @@ export const headingBlock = z.object({
   text: short,
   level: z.union([z.literal(1), z.literal(2), z.literal(3)]).default(1),
   align,
+  /// false = yozilganidek (talaffuz [ay], kichik harf "a" uchun); true = hammasi katta harf
+  caps: z.boolean().default(true),
 });
 
 export const textBlock = z.object({ ...frame, type: z.literal('text'), text: text(), align });
@@ -39,8 +41,14 @@ export const calloutBlock = z.object({
   ...frame,
   type: z.literal('callout'),
   text: text(),
-  tone: z.enum(['info', 'warning', 'success']).default('info'),
+  /// Darslik uslubidagi qutilar: rule = qoida (sariq), example = misol (ko'k), tip = eslatma, warning = diqqat
+  tone: z.enum(['info', 'warning', 'success', 'rule', 'example', 'tip']).default('info'),
+  /// Quti sarlavhasi; bo'sh bo'lsa turiga qarab standart yozuv ("QOIDA", "MISOL"...)
+  title: z.string().max(60).default(''),
 });
+
+/// Hali topilmagan media uchun ustozga topshiriq: nima kerak va qanday qidirish (o'quvchiga yuborilmaydi)
+const mediaBrief = { brief: text(1000).default(''), search: short.default('') };
 
 export const imageBlock = z.object({
   ...frame,
@@ -48,6 +56,7 @@ export const imageBlock = z.object({
   assetId: z.string().uuid().nullable().default(null),
   alt: short.default(''),
   fit: z.enum(['contain', 'cover']).default('contain'),
+  ...mediaBrief,
 });
 
 export const audioBlock = z.object({
@@ -56,6 +65,7 @@ export const audioBlock = z.object({
   assetId: z.string().uuid().nullable().default(null),
   caption: short.default(''),
   transcript: text().default(''),
+  ...mediaBrief,
 });
 
 const option = z.object({ id, text: short });

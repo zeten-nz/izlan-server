@@ -67,7 +67,18 @@ export class StaffLessonsService {
         title: l.title,
         updatedAt: l.updatedAt,
         published: l.published ? { rev: l.published.rev, at: l.published.publishedAt } : null,
-        topic: { id: l.topic.id, title: l.topic.title, levelCode: l.topic.level.code, directionTitle: l.topic.level.direction.title },
+        topic: {
+          id: l.topic.id,
+          title: l.topic.title,
+          ord: l.topic.ord,
+          levelId: l.topic.levelId,
+          levelCode: l.topic.level.code,
+          levelOrd: l.topic.level.ord,
+          directionId: l.topic.level.directionId,
+          directionTitle: l.topic.level.direction.title,
+        },
+        /** Dastur tartibi: yo'nalish → daraja → mavzu → dars (ro'yxatni "tartib bo'yicha" saralash uchun) */
+        order: [l.topic.level.direction.sortOrder, l.topic.level.ord, l.topic.ord, l.sortOrder],
       })),
     };
   }

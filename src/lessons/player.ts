@@ -32,6 +32,8 @@ export function projectBlock(b: Block, resolve: GrammarResolver = NO_GRAMMAR): P
     const { blanks, explanation: _e, ...rest } = b;
     return { ...rest, blanks: blanks.map((x) => ({ id: x.id })) };
   }
+  // Media topshirig'i faqat ustoz uchun
+  if (b.type === 'image' || b.type === 'audio') return { ...b, brief: '', search: '' };
   return b;
 }
 

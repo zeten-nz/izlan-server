@@ -42,6 +42,19 @@ model User {
   vocabulary VocabularyEntry[]
   notes      StudentNote[]
   saved      SavedMaterial[]
+
+  profile      Profile?
+  wallet       Wallet?
+  equipped     EquippedCosmetics?
+  cosmetics    CosmeticOwnership[]
+  achievements UserAchievement[]
+
+  xpLedger         XpLedger[]
+  xpPurchases      XpPurchase[]
+  xpTopicDays      XpTopicDay[]
+  topicCompletions TopicCompletion[]
+  quizAttempts     QuizAttempt[]
+  authoredQuizzes  TopicQuiz[]       @relation("QuizAuthor")
 }
 
 /// Server-side sessiya. Cookie'da faqat tasodifiy token, bazada uning hash'i.
@@ -150,6 +163,7 @@ model Topic {
   rules     Rule[]
   questions Question[]
   lessons   Lesson[]
+  quiz      TopicQuiz?
 
   @@unique([levelId, ord])
 }
@@ -341,15 +355,15 @@ model LessonBlockAttempt {
 }
 
 model LessonProgress {
-  id          String    @id @default(uuid())
-  userId      String
-  versionId   String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
+  id             String    @id @default(uuid())
+  userId         String
+  versionId      String
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
   /// Oxirgi tasdiqlangan sahifa tartibi (faqat davom ettirish uchun; progress emas)
   lastPageIndex  Int?
   /// Haqiqatan ochib ko'rilgan sahifa id'lari (faqat qo'shiladi). Ochiq sahifa va tugatishdan alohida.
-  visitedPageIds String[] @default([])
+  visitedPageIds String[]  @default([])
 
   user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   version LessonVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
@@ -449,4 +463,534 @@ model Asset {
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([ownerId])
+}
+
+// ───────────── Profil, mukofotlar va shaxsiy identifikatsiya ─────────────
+// XP/IZL berish va sarflash mexanizmi HOZIRCHA YO'Q: balanslar faqat o'qiladi (qator bo'lmasa 0).
+
+/// Ommaviy profil sozlamalari. Qator bo'lmasa — hammasi yopiq (xavfsiz standart).
+model Profile {
+  userId           String   @id
+  bio              String   @default("")
+  isPublic         Boolean  @default(false)
+  showFullName     Boolean  @default(false)
+  showAchievements Boolean  @default(false)
+  showStats        Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Eski username -> user (username o'zgarsa eski havola yangisiga yo'naltiriladi). Yozuv username o'zgartirish
+/// funksiyasi qo'shilganda shu jadvalga yoziladi; hozir faqat qidiruv tayyor.
+model UsernameAlias {
+  oldUsername String   @id
+  userId      String
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// XP/IZL balansi. xpBalance — sarflanadigan; totalXpEarned — jami (xariddan kamaymaydi); izlBalance — alohida valyuta.
+/// Manfiy bo'lmasligi DB CHECK bilan kafolatlanadi (migration.sql).
+model Wallet {
+  userId        String   @id
+  xpBalance     Int      @default(0)
+  totalXpEarned Int      @default(0)
+  izlBalance    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum CosmeticKind {
+  FRAME
+  BANNER
+  EFFECT
+  TITLE
+}
+
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum CosmeticStatus {
+  DRAFT
+  ACTIVE
+  DISABLED
+}
+
+enum OwnershipSource {
+  PURCHASE
+  ACHIEVEMENT
+  EVENT
+  ADMIN_GRANT
+}
+
+/// Bezak katalogi. Katalogdan "olib tashlash" = status DISABLED; qator o'chirilmaydi (egalik saqlanadi).
+model CosmeticItem {
+  id          String         @id @default(uuid())
+  slug        String         @unique
+  kind        CosmeticKind
+  rarity      Rarity
+  name        String
+  description String         @default("")
+  /// null = narx hali belgilanmagan
+  priceXp     Int?
+  status      CosmeticStatus @default(DRAFT)
+  /// Vizual tavsif (tokenlar): klient o'z tokenlari orqali chizadi, ixtiyoriy HTML/CSS qabul qilinmaydi
+  preview     Json           @default("{}")
+  season      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  owners    CosmeticOwnership[]
+  purchases XpPurchase[]
+
+  @@index([kind, status])
+}
+
+model CosmeticOwnership {
+  id         String          @id @default(uuid())
+  userId     String
+  itemId     String
+  source     OwnershipSource
+  acquiredAt DateTime        @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, itemId])
+  @@index([itemId])
+}
+
+/// Har turdan bittadan faol bezak (tuzilma bo'yicha kafolat). Egalik tekshiruvi servisda.
+model EquippedCosmetics {
+  userId    String   @id
+  frameId   String?
+  bannerId  String?
+  effectId  String?
+  titleId   String?
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Yutuq ta'rifi. Avtomatik berish mexanizmi yo'q: UserAchievement faqat kelajakdagi integratsiya uchun.
+model AchievementDefinition {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  active      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String
+  achievementId String
+  earnedAt      DateTime @default(now())
+  /// Berilish sababi: qaysi ko'rsatkich va qiymat (audit uchun)
+  reason        Json     @default("{}")
+  ruleVersion   String   @default("ach-v1")
+  /// Profilda asosiy badge sifatida belgilangan tartib (1..3), null = belgilanmagan
+  showcaseOrder Int?
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement AchievementDefinition @relation(fields: [achievementId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, achievementId])
+}
+
+/// Admin amallari jurnali (faqat qo'shiladi).
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  action    String
+  entity    String
+  entityId  String
+  meta      Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId])
+}
+
+// ───────────── XP iqtisodiyoti: ledger, mavzu belgilari va mavzu testi ─────────────
+// XP berish FAQAT server hodisalari orqali (src/xp). Wallet shu ledger bilan bitta tranzaksiyada yangilanadi.
+
+enum XpEventType {
+  LESSON_COMPLETE
+  TOPIC_COMPLETE
+  QUIZ_TIER
+  NOTE_VERIFIED
+  /// XP do'konidan bezak xaridi (kind = SPEND)
+  PURCHASE
+}
+
+/// EARN hozir yagona ishlatiladi; SPEND/ADJUST kelajakdagi xarid va tuzatishlar uchun zaxira (grantedXp <= 0).
+enum XpEntryKind {
+  EARN
+  SPEND
+  ADJUST
+}
+
+/// Append-only XP jurnali: UPDATE DB trigger bilan taqiqlangan, DELETE faqat foydalanuvchi o'chirilganda (cascade).
+model XpLedger {
+  id             String      @id @default(uuid())
+  userId         String
+  kind           XpEntryKind @default(EARN)
+  eventType      XpEventType
+  /// Manba: dars id, mavzu id (mavzu/test hodisalari)
+  sourceId       String
+  topicId        String?
+  /// Siyosat bo'yicha bazaviy XP (koeffitsiyentgacha)
+  baseXp         Int
+  /// Qo'llangan koeffitsiyent (bazis punkt, 10000 = 100%) — snapshot
+  multiplierBp   Int
+  /// Haqiqatan berilgan butun XP
+  grantedXp      Int
+  /// Takroriy hodisani bloklaydi (masalan lesson:{userId}:{lessonId})
+  dedupeKey      String      @unique
+  policyVersion  String
+  /// Asia/Tashkent bo'yicha sana (YYYY-MM-DD)
+  dayKey         String
+  /// Mavzuning o'sha kundagi tartibi (1,2,3...)
+  topicDayOrd    Int?
+  /// SPEND: sotib olingan bezak va to'langan narx (snapshot; keyingi narx o'zgarishidan mustaqil)
+  cosmeticItemId String?
+  pricePaid      Int?
+  balanceAfter   Int
+  totalAfter     Int
+  meta           Json        @default("{}")
+  createdAt      DateTime    @default(now())
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purchase XpPurchase?
+
+  @@index([userId, createdAt])
+  @@index([userId, dayKey, topicId])
+}
+
+/// XP bilan bezak xaridi: har (foydalanuvchi, niyat kaliti) uchun bitta; (foydalanuvchi, bezak) ham bitta.
+model XpPurchase {
+  id             String   @id @default(uuid())
+  userId         String
+  itemId         String
+  /// Mijoz har xarid niyati uchun yuboradigan kalit
+  idempotencyKey String
+  pricePaid      Int
+  ledgerId       String   @unique
+  createdAt      DateTime @default(now())
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item   CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  ledger XpLedger     @relation(fields: [ledgerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@unique([userId, itemId])
+  @@index([userId, createdAt])
+}
+
+/// Foydalanuvchi mavzusining kundagi tartibi: birinchi haqiqiy XP hodisasida belgilanadi va o'zgarmaydi.
+model XpTopicDay {
+  userId    String
+  dayKey    String
+  topicId   String
+  ord       Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, dayKey, topicId])
+  @@unique([userId, dayKey, ord])
+}
+
+/// Mavzu BIRINCHI marta tugatilganini ishonchli saqlaydi: keyin dars qo'shilsa ham mavzu XP takrorlanmaydi.
+/// source = LESSONS (XP berilgan) | BACKFILL (migratsiyada mavjud tarixdan belgilangan, XP berilmagan).
+model TopicCompletion {
+  userId      String
+  topicId     String
+  completedAt DateTime @default(now())
+  source      String   @default("LESSONS")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+}
+
+/// Mavzu testi (mavzuga bitta): savollar versiyalarda, natija backend'da hisoblanadi.
+model TopicQuiz {
+  id        String   @id @default(uuid())
+  topicId   String   @unique
+  authorId  String
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  topic    Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  author   User          @relation("QuizAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  versions QuizVersion[]
+}
+
+/// DRAFT: har test uchun bitta (rev — optimistic lock). PUBLISHED: o'zgarmas snapshot; eng so'nggisi amal qiladi.
+model QuizVersion {
+  id          String              @id @default(uuid())
+  quizId      String
+  status      LessonVersionStatus
+  rev         Int                 @default(1)
+  /// [{ id, text, options: [{ id, text }], correctId }]
+  questions   Json
+  createdAt   DateTime            @default(now())
+  publishedAt DateTime?
+
+  quiz     TopicQuiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  attempts QuizAttempt[]
+
+  @@index([quizId, status])
+}
+
+model QuizAttempt {
+  id           String   @id @default(uuid())
+  userId       String
+  versionId    String
+  /// { [questionId]: optionId }
+  answers      Json
+  correctCount Int
+  total        Int
+  scorePct     Int
+  createdAt    DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version QuizVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, versionId])
+}
+
+// ───────────── Grammar Library (PostgreSQL — yagona manba; ADR-001) ─────────────
+// Foydalanuvchi ID'lari (authorId, approvedById, actorId ...) ataylab FK'siz: audit/tarix foydalanuvchi o'chirilsa ham saqlanadi.
+// Immutability/append-only qoidalari DB trigger'lari bilan (migration SQL).
+
+enum GrammarRevisionStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  REJECTED
+  APPROVED
+}
+
+enum GrammarRuleState {
+  OPEN
+  RETIRED
+}
+
+enum GrammarProvenance {
+  AI_DRAFT
+  ORIGINAL
+  EXTERNAL
+  MIXED
+  UNKNOWN
+}
+
+enum GrammarActivationAction {
+  ACTIVATE
+  ROLLBACK
+}
+
+enum GrammarOverlayAction {
+  HIDE
+  UNHIDE
+}
+
+/// Til konfiguratsiyasi (release'ga muzlatiladi).
+model GrammarLanguage {
+  code        String   @id
+  name        String
+  nativeName  String   @default("")
+  dir         String   @default("ltr")
+  /// Ruxsat etilgan blok turlari (table, conjugation, declension)
+  blocks      String[]
+  enabled     Boolean  @default(false)
+  levelSystem String   @default("none")
+  scripts     String[]
+  categories  Json     @default("[]")
+  updatedAt   DateTime @updatedAt
+}
+
+/// Barqaror identifikatsiya. `id` (gr_<til>_<6 raqam>) o'zgarmas va qayta ishlatilmaydi.
+model GrammarRule {
+  id             String           @id
+  lang           String
+  slug           String
+  category       String
+  levelSystem    String?
+  levelValue     String?
+  levelConfirmed Boolean          @default(false)
+  state          GrammarRuleState @default(OPEN)
+  /// Retire qilinganda almashtiruvchi qoida (release'da kuchga kiradi)
+  replacedById   String?
+  retiredReason  String?
+  createdById    String?
+  /// createdById yo'q bo'lganda provenance yorlig'i (masalan "AI qoralama (Claude), tekshirilmagan")
+  createdLabel   String?
+  /// Soft delete: faqat hech qachon approved bo'lmagan qoida. Slug bo'shatiladi (asl slug deletedSlug'da).
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedReason  String?
+  deletedSlug    String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  revisions GrammarRevision[]
+  aliases   GrammarSlugAlias[]
+
+  @@unique([lang, slug])
+  @@index([createdById])
+  @@index([lang, state])
+}
+
+model GrammarSlugAlias {
+  id        String      @id @default(uuid())
+  ruleId    String
+  lang      String
+  slug      String
+  createdAt DateTime    @default(now())
+  rule      GrammarRule @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+
+  @@unique([lang, slug])
+  @@index([ruleId])
+}
+
+/// ID ajratish hisoblagichi (advisory lock ostida oshiriladi; qiymat hech qachon kamaymaydi).
+model GrammarIdCounter {
+  lang String @id
+  next Int    @default(1)
+}
+
+/// Qoida versiyasi. IN_REVIEW/APPROVED/REJECTED holatida `content` o'zgarmaydi (DB trigger).
+model GrammarRevision {
+  id                   String                @id @default(uuid())
+  ruleId               String
+  explanationLang      String
+  revisionNo           Int
+  status               GrammarRevisionStatus @default(DRAFT)
+  /// Optimistik qulf (faqat DRAFT/CHANGES_REQUESTED tahririda oshadi)
+  rev                  Int                   @default(1)
+  /// Tuzilishi server/src/grammar/content.schema.ts da (title, summary, formulas, examples, ..., body)
+  content              Json
+  contentSchemaVersion Int                   @default(1)
+  contentHash          String
+  provenance           GrammarProvenance     @default(UNKNOWN)
+  authorId             String?
+  authorLabel          String?
+  lastEditedById       String?
+  submittedAt          DateTime?
+  /// Admin tasdig'i
+  approvedById         String?
+  approvedAt           DateTime?
+  /// Admin ko'rgan va tasdiqlagan kontent xeshi (= contentHash)
+  approvedHash         String?
+  selfApproved         Boolean               @default(false)
+  checks               Json?
+  /// Oxirgi review izohi (tuzatish talablari/rad sababi)
+  reviewNote           String?
+  deletedAt            DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  rule  GrammarRule          @relation(fields: [ruleId], references: [id], onDelete: Restrict)
+  items GrammarReleaseItem[]
+
+  @@unique([ruleId, explanationLang, revisionNo])
+  @@index([status])
+  @@index([authorId])
+}
+
+/// Append-only workflow/audit tarixi (UPDATE/DELETE trigger bilan taqiqlangan).
+model GrammarReviewEvent {
+  id         String   @id @default(uuid())
+  ruleId     String
+  revisionId String?
+  actorId    String?
+  action     String
+  fromStatus String?
+  toStatus   String?
+  note       String?
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([ruleId, createdAt])
+  @@index([revisionId])
+}
+
+/// Immutable release snapshot.
+model GrammarRelease {
+  id                   String   @id @default(uuid())
+  seq                  Int      @unique @default(autoincrement())
+  createdById          String?
+  note                 String?
+  contentSchemaVersion Int      @default(1)
+  /// Til konfiguratsiyasi snapshot'i
+  languages            Json
+  snapshotHash         String
+  /// Darvozalar natijasi, diff va ta'sir tahlili
+  validation           Json     @default("{}")
+  baseReleaseId        String?
+  createdAt            DateTime @default(now())
+
+  items GrammarReleaseItem[]
+}
+
+model GrammarReleaseItem {
+  releaseId       String
+  ruleId          String
+  explanationLang String
+  revisionId      String
+  /// Muzlatilgan rule metadata: lang, slug, category, level, state, replacedById, aliases
+  meta            Json
+
+  release  GrammarRelease  @relation(fields: [releaseId], references: [id], onDelete: Restrict)
+  revision GrammarRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@id([releaseId, ruleId, explanationLang])
+  @@index([revisionId])
+}
+
+/// Append-only aktivlashtirish jurnali. Aktiv release = oxirgi qator (seq bo'yicha).
+model GrammarActivation {
+  seq               Int                     @id @default(autoincrement())
+  releaseId         String
+  action            GrammarActivationAction
+  /// Pipeline/CLI identifikatori (foydalanuvchi emas)
+  actor             String
+  reason            String
+  previousReleaseId String?
+  createdAt         DateTime                @default(now())
+}
+
+/// Append-only kill-switch jurnali: faqat ko'rsatma (HIDE/UNHIDE), kontent maydonlari YO'Q.
+model GrammarOverlayEvent {
+  seq       Int                  @id @default(autoincrement())
+  ruleId    String
+  action    GrammarOverlayAction
+  actorId   String
+  reason    String
+  createdAt DateTime             @default(now())
+
+  @@index([ruleId, seq])
+}
+
+model GrammarImportRun {
+  id         String    @id @default(uuid())
+  source     String
+  dryRun     Boolean
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  report     Json      @default("{}")
 }

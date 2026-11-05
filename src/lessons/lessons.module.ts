@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { RolesGuard } from '../auth/roles';
+import { GrammarModule } from '../grammar/grammar.module';
 import { LearningModule } from '../learning/learning.module';
+import { XpModule } from '../xp/xp.module';
+import { AchievementsModule } from '../achievements/achievements.module';
 import { AssetsController } from './assets.controller';
 import { AssetsService } from './assets.service';
 import { StaffLessonsController } from './staff-lessons.controller';
@@ -10,7 +13,7 @@ import { StudentLessonsController } from './student-lessons.controller';
 import { StudentLessonsService } from './student-lessons.service';
 
 @Module({
-  imports: [AuthModule, LearningModule],
+  imports: [AuthModule, GrammarModule, LearningModule, XpModule, AchievementsModule],
   controllers: [StaffLessonsController, StudentLessonsController, AssetsController],
   providers: [StaffLessonsService, StudentLessonsService, AssetsService, RolesGuard],
   exports: [StudentLessonsService],

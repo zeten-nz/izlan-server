@@ -5,10 +5,12 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
+import { CosmeticsAdminController } from './cosmetics.controller';
+import { CosmeticsAdminService } from './cosmetics.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [AdminController, CatalogController],
-  providers: [AdminService, CatalogService, RolesGuard],
+  controllers: [AdminController, CatalogController, CosmeticsAdminController],
+  providers: [AdminService, CatalogService, CosmeticsAdminService, RolesGuard],
 })
 export class AdminModule {}

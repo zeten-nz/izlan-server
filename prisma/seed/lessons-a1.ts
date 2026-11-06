@@ -5,11 +5,14 @@
  *
  *   npx tsx prisma/seed/lessons-a1.ts [--level A2|B1|B2|C1|C2] --tts <ro'yxat.txt>            # kerakli audiolar ro'yxati (TTS uchun)
  *   npx tsx prisma/seed/lessons-a1.ts [--level A2|B1|B2|C1|C2] --audio <mp3 papka> [--author ustoz_1] [--refresh] [--reorder]
+ *       [--direction ingliz-tili] [--rename "eski=yangi"]   # production: yo'nalish slug'i va mavzuni qayta nomlash
+ * - Daraja yo'q bo'lsa english.ts ma'lumoti bilan yaratiladi; mavjud mavzular o'chirilmaydi.
  *
  * - Bir xil nomli dars mavzuda allaqachon bo'lsa — o'tkaziladi (qayta ishga tushirish xavfsiz).
  * - Mavzu testi bo'lmasa — yaratiladi; faqat tegilmagan qoralama (rev 1, nashr va urinishsiz) bo'lsa — yangilanadi.
  * - Audio: <papka>/<nom>.mp3 → Asset ("(qoralama TTS)"). Rasm: joy + topshiriq (nima kerak, qidiruv so'zi).
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -44,6 +47,7 @@ import { C2_PART1 } from "./c2/part1";
 import { C2_PART2 } from "./c2/part2";
 import { C2_PART3 } from "./c2/part3";
 import { C2_QUIZZES } from "./c2/quizzes";
+import { LEVELS } from "./english";
 
 const prisma = new PrismaClient();
 const arg = (name: string) => {
@@ -52,8 +56,15 @@ const arg = (name: string) => {
 };
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || "./uploads");
 const LEVEL = arg("level") ?? "A1";
+/** Yo'nalish slug'i: lokalda "english", productionda boshqacha bo'lishi mumkin (masalan "ingliz-tili"). */
+const DIRECTION = arg("direction") ?? "english";
+/** Qo'shimcha qayta nomlash: --rename "test 1=Alifbo va o'qish" (faqat eski nom bor va yangisi yo'q bo'lsa). */
+const CLI_RENAMES: Record<string, string> = Object.fromEntries(
+  [arg("rename")].filter((x): x is string => !!x).map((r) => r.split("=").map((p) => p.trim()) as [string, string]),
+);
+const A1_TOPIC_ORDER = [...new Set([...MODULE0, ...TOPICS].map((s) => s.topic))];
 const CONTENT: Record<string, { lessons: LessonSpec[]; quizzes: QuizSpec[]; topicOrder?: string[]; renames?: Record<string, string> }> = {
-  A1: { lessons: [...MODULE0, ...TOPICS], quizzes: A1_QUIZZES },
+  A1: { lessons: [...MODULE0, ...TOPICS], quizzes: A1_QUIZZES, topicOrder: A1_TOPIC_ORDER },
   A2: { lessons: [...A2_PART1, ...A2_PART2, ...A2_PART3], quizzes: A2_QUIZZES, topicOrder: A2_TOPIC_ORDER },
   B1: { lessons: [...B1_PART1, ...B1_PART2, ...B1_PART3], quizzes: B1_QUIZZES, topicOrder: B1_TOPIC_ORDER, renames: B1_RENAMES },
   B2: { lessons: [...B2_PART1, ...B2_PART2, ...B2_PART3], quizzes: B2_QUIZZES, topicOrder: B2_TOPIC_ORDER, renames: B2_RENAMES },
@@ -69,8 +80,7 @@ const QUIZZES = CONTENT[LEVEL].quizzes;
  * Rejada yo'q mavzular (ustoz qo'shgan bo'lsa) oxiriga suriladi — hech biri o'chirilmaydi.
  */
 async function ensureTopicOrder(order: string[], renames: Record<string, string> = {}) {
-  const level = await prisma.level.findFirst({ where: { code: LEVEL, direction: { slug: "english" } }, select: { id: true } });
-  if (!level) throw new Error(`${LEVEL} darajasi topilmadi`);
+  const level = await ensureLevel();
   await prisma.$transaction(async (tx) => {
     const topics = await tx.topic.findMany({ where: { levelId: level.id }, select: { id: true, title: true, ord: true } });
     // Qayta nomlash: faqat eski nom bor va yangi nom hali yo'q bo'lsa (mavzu ID, darslar va natijalar saqlanadi)
@@ -96,6 +106,25 @@ async function ensureTopicOrder(order: string[], renames: Record<string, string>
   });
 }
 
+/** Daraja yo'q bo'lsa — english.ts dagi ma'lumot bilan yaratiladi (mavjudiga tegilmaydi). */
+async function ensureLevel() {
+  const direction = await prisma.direction.findUnique({ where: { slug: DIRECTION }, select: { id: true } });
+  if (!direction) throw new Error(`Yo'nalish topilmadi: ${DIRECTION} (--direction <slug> bering)`);
+  const found = await prisma.level.findFirst({ where: { directionId: direction.id, code: LEVEL }, select: { id: true } });
+  if (found) return found;
+  const idx = LEVELS.findIndex((l) => l.code === LEVEL);
+  if (idx < 0) throw new Error(`english.ts da ${LEVEL} yo'q`);
+  const lv = LEVELS[idx];
+  const taken = await prisma.level.findMany({ where: { directionId: direction.id }, select: { ord: true } });
+  const ord = taken.some((t) => t.ord === idx + 1) ? Math.max(0, ...taken.map((t) => t.ord)) + 1 : idx + 1;
+  const created = await prisma.level.create({
+    data: { directionId: direction.id, code: lv.code, ord, title: lv.title, summary: lv.summary, canDo: lv.canDo, vocabHint: lv.vocabHint },
+    select: { id: true },
+  });
+  console.log(`+ yangi daraja: ${lv.code} · ${lv.title} (ord ${ord})`);
+  return created;
+}
+
 /** TTS ro'yxati: "nom|ovoz|matn" (bitta) yoki "nom|+|ovoz:matn||ovoz:matn" (suhbat). */
 async function writeTtsList(file: string) {
   const jobs = new Map<string, AudioJob>();
@@ -112,7 +141,7 @@ async function writeTtsList(file: string) {
 }
 
 async function topicId(title: string) {
-  const t = await prisma.topic.findFirst({ where: { title, level: { code: LEVEL, direction: { slug: "english" } } }, select: { id: true } });
+  const t = await prisma.topic.findFirst({ where: { title, level: { code: LEVEL, direction: { slug: DIRECTION } } }, select: { id: true } });
   if (!t) throw new Error(`Mavzu topilmadi: ${title}`);
   return t.id;
 }
@@ -161,7 +190,7 @@ async function provision(dir: string, authorName: string) {
   const author = await prisma.user.findUnique({ where: { username: authorName }, select: { id: true, role: true } });
   if (!author || (author.role !== "ADMIN" && author.role !== "TEACHER")) throw new Error(`Muallif topilmadi yoki ustoz/admin emas: ${authorName}`);
   const order = CONTENT[LEVEL].topicOrder;
-  if (order) await ensureTopicOrder(order, CONTENT[LEVEL].renames);
+  if (order) await ensureTopicOrder(order, { ...CONTENT[LEVEL].renames, ...CLI_RENAMES });
 
   let created = 0;
   for (const spec of LESSONS) {

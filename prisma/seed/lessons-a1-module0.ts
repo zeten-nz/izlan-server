@@ -1,13 +1,14 @@
 /**
  * A1 · 0-modul "Alifbo va o'qish": dastlabki 3 dars QORALAMA sifatida (nashr qilinmaydi).
  *
- *   npx tsx prisma/seed/lessons-a1-module0.ts --audio <mp3 papka> [--author admin]
+ *   npx tsx prisma/seed/lessons-a1-module0.ts --audio <mp3 papka> [--author admin] [--direction ingliz-tili]
  *
  * - Mavzu "Alifbo va o'qish" ingliz tili A1 ning birinchi mavzusi qilib qo'shiladi (bo'lmasa).
  * - Bir xil nomli dars mavzuda allaqachon bo'lsa, o'tkazib yuboriladi (qayta ishga tushirish xavfsiz).
  * - Audio: <papka>/<nom>.mp3 → Asset. Rasm: hali yo'q, o'rniga "nima kerak + qidiruv so'zi" topshirig'i.
  * Talaffuz: amerikancha, [ ] ichida o'zbekcha yozuv (: cho'zish, ä, ə).
  */
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -24,6 +25,7 @@ const AUDIO_DIR = arg("audio");
 const AUTHOR = arg("author") ?? "admin";
 const UPLOAD_DIR = path.resolve(process.env.UPLOAD_DIR || "./uploads");
 const TOPIC_TITLE = "Alifbo va o'qish";
+const DIRECTION = arg("direction") ?? "english";
 
 // ───────────── Bloklar ─────────────
 
@@ -477,7 +479,7 @@ function lesson3(): LessonDoc {
 // ───────────── Bazaga yozish ─────────────
 
 async function ensureTopic(): Promise<string> {
-  const english = await prisma.direction.findUnique({ where: { slug: "english" }, select: { id: true } });
+  const english = await prisma.direction.findUnique({ where: { slug: DIRECTION }, select: { id: true } });
   if (!english) throw new Error("Ingliz tili yo'nalishi yo'q: avval `npm run db:seed:catalog -- --missing`");
   const a1 = await prisma.level.findFirst({ where: { directionId: english.id, code: "A1" }, select: { id: true } });
   if (!a1) throw new Error("A1 darajasi topilmadi");

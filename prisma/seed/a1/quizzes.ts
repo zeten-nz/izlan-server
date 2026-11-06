@@ -63,6 +63,9 @@ export const QUIZZES: QuizSpec[] = [
   {
     topic: "\"To be\" fe'li (am / is / are)",
     questions: [
+      ["Lola and ___ brother.",["her","his","she"],0],
+      ["«Uning (erkak) ismi Ali»",["His name is Ali.","He name is Ali.","Her name is Ali."],0],
+      ["«ularning uyi»",["their house","they house","them house"],0],
       ["I ___ a student.", ["am", "is", "are"], 0],
       ["She ___ a doctor.", ["is", "am", "are"], 0],
       ["They ___ friends.", ["are", "am", "is"], 0],
@@ -83,6 +86,10 @@ export const QUIZZES: QuizSpec[] = [
   {
     topic: "Present Simple",
     questions: [
+      ["___ do you live? — In Tashkent.",["Where","When","Who"],0],
+      ["What ___ she do?",["does","do","is"],0],
+      ["To'g'ri gap:",["I never eat meat.","I don't never eat meat."],0],
+      ["To'g'ri tartib:",["She is always late.","She always is late."],0],
       ["I ___ to school every day.", ["go", "goes", "am go"], 0],
       ["She ___ tennis.", ["plays", "play", "playes"], 0],
       ["He ___ TV.", ["watches", "watchs", "watch"], 0],
@@ -104,6 +111,8 @@ export const QUIZZES: QuizSpec[] = [
   {
     topic: "Artikllar: a / an / the",
     questions: [
+      ["«uchta kitob»",["three books","three book","three a book"],0],
+      ["child → ko'plik:",["children","childs","childrens"],0],
       ["___ apple", ["an", "a"], 0],
       ["___ book", ["a", "an"], 0],
       ["___ hour", ["an", "a"], 0],

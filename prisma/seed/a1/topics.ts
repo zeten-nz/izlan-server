@@ -1,5 +1,6 @@
-/** A1 1–6-mavzular: 16–37-darslar. Tartib katalogdagi mavzular tartibiga mos. */
+/** A1 1–6-mavzular: 16–41-darslar (+ extra.ts dagi 4 ta dars). Tartib katalogdagi mavzular tartibiga mos. */
 import type { LessonSpec } from "./builder";
+import { FREQUENCY, PLURALS, POSSESSIVES, WH_QUESTIONS } from "./extra";
 
 const GREET = "Salomlashish va tanishuv";
 const BE = "\"To be\" fe'li (am / is / are)";
@@ -427,11 +428,12 @@ export const TOPICS: LessonSpec[] = [
     ],
     mixWrite: { t: "Is he new here? — Yes, he [[a]].", a: ["is"], why: "Yes, he **is**." },
     summary: ["So'roq: ==Is== she …? ==Are== you …?", "Qisqa javob: Yes, I ==am==. / No, I'm not.", "«Yes, I'm» — xato"],
-    next: "Oila va kasblar",
+    next: "my, your, his, her: kimniki?",
   },
+  POSSESSIVES,
   {
     topic: BE,
-    title: "23-dars. Oila va kasblar",
+    title: "24-dars. Oila va kasblar",
     intro: "Endi «to be» bilan oilangiz haqida gapira olasiz! Bugun oila a'zolari va kasblarni o'rganamiz.",
     goals: ["Oila a'zolari", "Kasblar", "This is my mother. She is a teacher."],
     cover: ["Oila portreti: ota, ona, aka, singil — iliq, zamonaviy illustratsiya", "family portrait illustration modern"],
@@ -497,7 +499,7 @@ export const TOPICS: LessonSpec[] = [
   // ───────────── Present Simple ─────────────
   {
     topic: PS,
-    title: "24-dars. Kundalik ishlar",
+    title: "25-dars. Kundalik ishlar",
     intro: "Har kuni nima qilasiz? Bugun kundalik ishlarni aytishni o'rganamiz. Buning uchun **Present Simple** zamoni ishlatiladi.",
     goals: ["Kundalik ishlar fe'llari", "I / you / we / they + fe'l", "every day"],
     cover: ["Har kuni maktabga ketayotgan bola — ertalabki ko'cha", "boy goes to school every day illustration"],
@@ -561,7 +563,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: PS,
-    title: "25-dars. He / she / it + -s",
+    title: "26-dars. He / she / it + -s",
     intro: "Present Simple'da bitta muhim qoida bor: **he, she, it** bilan fe'lga **-s** qo'shiladi. Bu eng ko'p xato qilinadigan joy!",
     goals: ["he / she / it + -s", "-s, -es, -ies", "-s ning uch xil talaffuzi"],
     cover: ["Tennis o'ynayotgan qiz — «She plays tennis»", "girl playing tennis illustration"],
@@ -615,7 +617,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: PS,
-    title: "26-dars. Inkor: don't / doesn't",
+    title: "27-dars. Inkor: don't / doesn't",
     intro: "«Men qahva ichmayman» — inglizchada qanday aytiladi? Present Simple'da inkor uchun yordamchi fe'l kerak: **don't** yoki **doesn't**.",
     goals: ["I / you / we / they + don't", "he / she / it + doesn't", "doesn't dan keyin -s yo'q"],
     cover: ["Qahva piyolasi ustida «yo'q» belgisi", "no coffee sign illustration"],
@@ -669,7 +671,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: PS,
-    title: "27-dars. So'roq: Do you…? / Does he…?",
+    title: "28-dars. So'roq: Do you…? / Does he…?",
     intro: "«Choy yoqadimi?» — Present Simple'da so'roq uchun **Do** yoki **Does** gap boshiga qo'yiladi.",
     goals: ["Do you …? Does she …?", "Qisqa javob: Yes, I do.", "Where / What bilan savol"],
     cover: ["Kafeda ikki do'st gaplashmoqda, biri savol bermoqda", "two friends talking cafe illustration"],
@@ -719,11 +721,12 @@ export const TOPICS: LessonSpec[] = [
     ],
     mixWrite: { t: "Where [[a]] you live?", a: ["do"], why: "Where **do** you live?" },
     summary: ["==Do== I / you / we / they …? ==Does== he / she / it …?", "Javob: Yes, I ==do== / No, she ==doesn't==", "Does'dan keyin fe'l ==-s siz=="],
-    next: "Hafta kunlari va vaqt",
+    next: "What, Where, When…? Savol so'zlari",
   },
+  WH_QUESTIONS, FREQUENCY,
   {
     topic: PS,
-    title: "28-dars. Hafta kunlari va vaqt",
+    title: "31-dars. Hafta kunlari va vaqt",
     intro: "Qachon? — dushanba kuni, soat yettida… Bugun hafta kunlari, soatni aytish va **at / on** so'zlarini o'rganamiz.",
     goals: ["Hafta kunlari", "Soat: at 7 o'clock", "at va on"],
     cover: ["Haftalik kalendar (dushanba–yakshanba) va devor soati", "weekly calendar and wall clock illustration"],
@@ -789,7 +792,7 @@ export const TOPICS: LessonSpec[] = [
   // ───────────── Artikllar ─────────────
   {
     topic: ART,
-    title: "29-dars. a va an",
+    title: "32-dars. a va an",
     intro: "Inglizchada otdan oldin ko'pincha kichik so'z turadi: **a** yoki **an**. U «bitta, qandaydir» ma'nosini beradi.",
     goals: ["a yoki an — qanday tanlash", "Tovushga qarash (harfga emas)", "an hour, a university"],
     cover: ["Olma (an apple) va kitob (a book) yonma-yon", "apple and book illustration"],
@@ -839,11 +842,12 @@ export const TOPICS: LessonSpec[] = [
     ],
     mixWrite: { t: "I have [[a]] idea!", a: ["an"], why: "**an** idea [ay**di:**ə]" },
     summary: ["Undosh tovush → ==a==, unli tovush → ==an==", "an hour, a university — ==tovushga qarang==", "Ko'plikda a / an yo'q"],
-    next: "the — aniq narsa",
+    next: "Bitta va ko'p: book → books",
   },
+  PLURALS,
   {
     topic: ART,
-    title: "30-dars. the — aniq narsa",
+    title: "34-dars. the — aniq narsa",
     intro: "**the** — eng ko'p ishlatiladigan inglizcha so'z. U «aynan shu, o'sha» ma'nosini beradi.",
     goals: ["a va the farqi", "Yagona narsalar: the sun", "Ikkinchi marta tilga olinganda"],
     cover: ["Osmonda quyosh va oy — kun va tun", "sun and moon sky illustration"],
@@ -897,7 +901,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: ART,
-    title: "31-dars. Ranglar va narsalar",
+    title: "35-dars. Ranglar va narsalar",
     intro: "Narsalarni tasvirlash uchun ranglar kerak. Bugun ranglarni va «qizil sumka» kabi iboralarni to'g'ri tuzishni o'rganamiz.",
     goals: ["Asosiy ranglar", "Sifat otdan oldin", "a / an + sifat + ot"],
     cover: ["Rang palitrasi: qizil, ko'k, yashil, sariq, qora, oq bo'yoq dog'lari", "color palette paint swatches"],
@@ -953,7 +957,7 @@ export const TOPICS: LessonSpec[] = [
   // ───────────── There is / There are ─────────────
   {
     topic: THERE,
-    title: "32-dars. Mening uyim",
+    title: "36-dars. Mening uyim",
     intro: "Uyingizda nechta xona bor? Bugun xonalar va uy jihozlari nomlarini o'rganamiz — keyingi darsda ular bilan gap tuzamiz.",
     goals: ["Xonalar nomlari", "Uy jihozlari", "in the kitchen"],
     cover: ["Uy rejasi (yuqoridan): oshxona, yotoqxona, hammom, mehmonxona", "house floor plan simple illustration"],
@@ -1007,7 +1011,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: THERE,
-    title: "33-dars. There is / There are",
+    title: "37-dars. There is / There are",
     intro: "«Xonada divan bor» — inglizchada **there is / there are** bilan aytiladi. Bu biror narsa **borligini** bildiradi.",
     goals: ["There is + birlik", "There are + ko'plik", "on, in, under"],
     cover: ["Xona: bitta divan va ikkita stul — sanash uchun aniq ko'rinadi", "room with one sofa and two chairs illustration"],
@@ -1061,7 +1065,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: THERE,
-    title: "34-dars. Is there…? / Are there…? + some / any",
+    title: "38-dars. Is there…? / Are there…? + some / any",
     intro: "«Yaqin atrofda do'kon bormi?» Bugun **there is / are** bilan savol berish va **some / any** so'zlarini o'rganamiz.",
     goals: ["Is there …? Are there …?", "Qisqa javob", "some va any"],
     cover: ["Kitob javoni — bir nechta kitob bor", "bookshelf with some books illustration"],
@@ -1115,7 +1119,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: THERE,
-    title: "35-dars. Shahar va yo'l so'rash",
+    title: "39-dars. Shahar va yo'l so'rash",
     intro: "Shaharda adashib qoldingizmi? Bugun shahar joylari, **yo'l so'rash** va tushuntirishni o'rganamiz.",
     goals: ["Shahar joylari", "Where is the …?", "go straight, turn left / right"],
     cover: ["Oddiy shahar xaritasi: park, maktab, bank, kasalxona, do'kon belgilari", "simple city map icons illustration"],
@@ -1182,7 +1186,7 @@ export const TOPICS: LessonSpec[] = [
   // ───────────── Can / can't ─────────────
   {
     topic: CAN,
-    title: "36-dars. Can / can't — qobiliyat",
+    title: "40-dars. Can / can't — qobiliyat",
     intro: "Suzishni bilasizmi? Ovqat pishira olasizmi? Bugun **can** («qila olaman») va **can't** («qila olmayman») ni o'rganamiz.",
     goals: ["I can … / I can't …", "Can you …? — Yes, I can.", "can'dan keyin fe'l o'zgarmaydi"],
     cover: ["Basseynda suzayotgan bola va oshxonada ovqat pishirayotgan qiz", "boy swimming and girl cooking illustration"],
@@ -1246,7 +1250,7 @@ export const TOPICS: LessonSpec[] = [
   },
   {
     topic: CAN,
-    title: "37-dars. Kafe va do'konda",
+    title: "41-dars. Kafe va do'konda",
     intro: "A1 ning oxirgi darsi! Bugun kafeda buyurtma berish, narx so'rash va 20 dan 100 gacha raqamlarni o'rganamiz.",
     goals: ["Can I have …, please?", "How much is it?", "Raqamlar 20–100"],
     cover: ["Kafe peshtaxtasi: menyu taxtasi, ofitsiant va mijoz", "cafe counter menu board waiter customer illustration"],

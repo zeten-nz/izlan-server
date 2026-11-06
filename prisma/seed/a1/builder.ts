@@ -126,8 +126,9 @@ export class LessonBuilder {
         this.H("Misollar"),
         ...s.examples.slice(0, 6).flatMap((e, i) => {
           const x = i % 2 === 0 ? 80 : 820;
-          const y = 150 + Math.floor(i / 2) * 230;
-          return [this.T(card({ ...e, en: e.en }), [x, y, 700, 160]), this.AUD(e.say ?? e.en, "", [x, y + 165, 700, 60])];
+          // Uzun gap + tarjima 3–4 qator bo'lishi mumkin: 175 px matn, ostida audio, qatorlar 240 px oraliqda
+          const y = 150 + Math.floor(i / 2) * 240;
+          return [this.T(card({ ...e, en: e.en }), [x, y, 700, 175]), this.AUD(e.say ?? e.en, "", [x, y + 180, 700, 55])];
         }),
       ]),
     );
@@ -170,7 +171,8 @@ export class LessonBuilder {
           ...chunk.flatMap(([en, tr, uz], i) => {
             const x = 80 + (i % 3) * 493;
             const y = 150 + Math.floor(i / 3) * 245;
-            return [this.T(`**${en}** ${tr}\n${uz}`, [x, y, 453, 130], "center"), this.AUD(en, "", [x, y + 135, 453, 60])];
+            // «child / children [chayld / childrən]» kabi juftliklar 3 qatorga tushadi — joy shunga yetadi
+            return [this.T(`**${en}** ${tr}\n${uz}`, [x, y, 453, 150], "center"), this.AUD(en, "", [x, y + 155, 453, 60])];
           }),
         ]),
       );

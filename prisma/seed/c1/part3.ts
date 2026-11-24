@@ -532,7 +532,7 @@ export const C1_PART3: LessonSpec[] = [
       { en: "I've gotta go.", tr: "[ayv **ga**də]", uz: "Ketishim kerak. (= got to)" },
       { en: "I dunno.", tr: "[ay də**nou**]", uz: "Bilmayman. (= don't know)" },
       { en: "Did you see it?", tr: "[**di**jə **si:** it]", uz: "Ko'rdingmi? (d + y → j)" },
-      { en: "Turn it off.", tr: "[tör**ni**tof]", uz: "O'chir uni. (so'zlar bog'lanadi)" },
+      { en: "Turn it off.", tr: "[tər**ni**tof]", uz: "O'chir uni. (so'zlar bog'lanadi)" },
     ],
     warning: ["Yozuvda xato", "❌ I'm gonna apply for the job. (rasmiy xatda)\n✅ I **am going to** apply for the job.\n❌ I wanna thank you for… ✅ I **would like to** thank you for…"],
     tip: ["Mashq usuli", "Seriallarni subtitr bilan ko'ring: eshitganingiz va yozilgani farq qilgan joylarni daftarga yozing — tez nutq «lug'ati» yig'iladi."],

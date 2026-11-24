@@ -4,7 +4,7 @@ import type { GrammarRegistryData } from './registry';
 
 export const GRAMMAR_REGISTRY_DATA: GrammarRegistryData = {
   "schemaVersion": 1,
-  "version": "017127bd5e73dc56",
+  "version": "1bf21df63468d388",
   "languages": [
     {
       "code": "en",
@@ -1147,6 +1147,162 @@ export const GRAMMAR_REGISTRY_DATA: GrammarRegistryData = {
       "level": {
         "system": "cefr",
         "value": "C1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000095",
+      "lang": "en",
+      "slug": "verb-object-infinitive",
+      "category": "verb-basics",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000096",
+      "lang": "en",
+      "slug": "make-let-allow",
+      "category": "verb-basics",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000097",
+      "lang": "en",
+      "slug": "would-rather-prefer",
+      "category": "modal-verbs",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000098",
+      "lang": "en",
+      "slug": "be-able-to",
+      "category": "modal-verbs",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000099",
+      "lang": "en",
+      "slug": "the-more-the-better",
+      "category": "adjectives-adverbs",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000100",
+      "lang": "en",
+      "slug": "articles-advanced",
+      "category": "articles",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000101",
+      "lang": "en",
+      "slug": "cause-result-linkers",
+      "category": "linking-words",
+      "level": {
+        "system": "cefr",
+        "value": "B1"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000102",
+      "lang": "en",
+      "slug": "addition-linkers",
+      "category": "linking-words",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000103",
+      "lang": "en",
+      "slug": "reporting-verbs",
+      "category": "reported-speech",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000104",
+      "lang": "en",
+      "slug": "its-time",
+      "category": "verb-basics",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000105",
+      "lang": "en",
+      "slug": "as-if-as-though",
+      "category": "sentence-structure",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000106",
+      "lang": "en",
+      "slug": "be-supposed-to",
+      "category": "modal-verbs",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
+      },
+      "status": "review",
+      "title": null
+    },
+    {
+      "id": "gr_en_000107",
+      "lang": "en",
+      "slug": "emphatic-do",
+      "category": "sentence-structure",
+      "level": {
+        "system": "cefr",
+        "value": "B2"
       },
       "status": "review",
       "title": null

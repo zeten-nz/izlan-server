@@ -1,0 +1,16 @@
+# Haftalik dependency yangilanishlari (xavfsizlik siyosati: patch'lar 7 kun ichida ko'rib chiqiladi).
+# Major versiyalar alohida PR bo'lib keladi va qo'lda sinaladi; npm audit fix --force ishlatilmaydi.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      patch-minor:
+        update-types: [patch, minor]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

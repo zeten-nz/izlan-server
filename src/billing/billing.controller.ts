@@ -145,6 +145,7 @@ class IgnoreDto {
  *  - GET  /internal/incomes?status=REVIEW   ko'rib chiqish navbati (o'xshash so'rovlar bilan)
  *  - POST /internal/incomes/:id/assign      { username, amount?, by } qo'lda biriktirish
  *  - POST /internal/incomes/:id/ignore      { by, note? }
+ *  - GET  /internal/incomes/stats           nazorat: reviewCount, oldestReviewAgeMinutes, lastIncomeAgeMinutes, pendingTopups
  */
 @Controller('internal')
 @UseGuards(BotTokenGuard)
@@ -165,6 +166,13 @@ export class InternalBotController {
   review(@Query('status') status?: string) {
     if (status && status !== 'REVIEW') throw new BadRequestException('Faqat status=REVIEW');
     return this.billing.reviewIncomes();
+  }
+
+  /** Nazorat: REVIEW navbati yoshi, oxirgi kirim, kutilayotgan to'ldirishlar (alert/uptime uchun). */
+  @Get('incomes/stats')
+  @Header('Cache-Control', 'no-store')
+  stats() {
+    return this.billing.incomeStats();
   }
 
   @Post('incomes/:id/assign')

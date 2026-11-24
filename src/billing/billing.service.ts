@@ -238,6 +238,30 @@ export class BillingService {
     });
   }
 
+  /**
+   * Nazorat (uptime/alert uchun): REVIEW navbati, eng eski REVIEW, oxirgi kirim va hozir kutilayotgan to'ldirishlar.
+   * Masalan: pendingTopups > 0, lekin lastIncomeAt soatlab yangilanmasa — kuzatuvchi bot to'xtagan bo'lishi mumkin.
+   */
+  async incomeStats(now = new Date()) {
+    const [reviewCount, oldestReview, lastIncome, pendingTopups, paidLast24h] = await Promise.all([
+      this.prisma.bankIncome.count({ where: { status: 'REVIEW' } }),
+      this.prisma.bankIncome.findFirst({ where: { status: 'REVIEW' }, orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
+      this.prisma.bankIncome.findFirst({ orderBy: { createdAt: 'desc' }, select: { createdAt: true, receivedAt: true } }),
+      this.prisma.topupRequest.count({ where: { status: 'PENDING', expiresAt: { gt: now } } }),
+      this.prisma.topupRequest.count({ where: { status: 'PAID', closedAt: { gte: new Date(now.getTime() - 86_400_000) } } }),
+    ]);
+    const minutesSince = (d: Date | undefined) => (d ? Math.floor((now.getTime() - d.getTime()) / 60_000) : null);
+    return {
+      reviewCount,
+      oldestReviewAt: oldestReview?.createdAt ?? null,
+      oldestReviewAgeMinutes: minutesSince(oldestReview?.createdAt),
+      lastIncomeAt: lastIncome?.createdAt ?? null,
+      lastIncomeAgeMinutes: minutesSince(lastIncome?.createdAt),
+      pendingTopups,
+      paidLast24h,
+    };
+  }
+
   async ignoreIncome(incomeId: string, by: string, note?: string) {
     const r = await this.prisma.bankIncome.updateMany({ where: { id: incomeId, status: 'REVIEW' }, data: { status: 'IGNORED', reason: `${by}: ${note ?? 'e’tiborsiz'}`.slice(0, 500) } });
     if (r.count !== 1) throw fail(HttpStatus.CONFLICT, 'NOT_IN_REVIEW', "Kirim topilmadi yoki ko'rib chiqishda emas");

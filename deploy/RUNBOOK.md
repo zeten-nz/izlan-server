@@ -56,3 +56,10 @@ mijoz ──HTTPS──> Nginx (443) ──> Next.js client (127.0.0.1:3000) ─
 2. Cheklash: zarur bo'lsa xizmatni o'chirish yoki `/api/internal` tokenini rotatsiya qilish.
 3. Shaxsiy ma'lumot sizib chiqqan bo'lsa — yurist orqali vakolatli organ va foydalanuvchilarni xabardor qilish.
 4. Tiklash (backup) va post-mortem.
+
+## To'lov kuzatuvchisi nazorati
+
+`GET http://127.0.0.1:4000/api/internal/incomes/stats` (sarlavha `x-bot-token`) — faqat server ichidan.
+Alert qoidalari (tavsiya):
+- `oldestReviewAgeMinutes > 60` — ko'rib chiqilmagan to'lov bor (foydalanuvchi pul o'tkazgan, balansi to'lmagan).
+- `pendingTopups > 0` va `lastIncomeAgeMinutes > 180` (ish vaqtida) — bot bank xabarlarini o'qimayotgan bo'lishi mumkin.

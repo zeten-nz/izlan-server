@@ -224,6 +224,19 @@ describe('Balans va kurs xaridi (PostgreSQL)', { skip: !RUN }, () => {
     }
   });
 
+  test("nazorat: stats REVIEW navbatini, kutilayotgan so'rovni va oxirgi kirimni ko'rsatadi", async () => {
+    const u = await mkUser();
+    const r = await billing.requestTopup(u.id, 4_325_000);
+    const before = await billing.incomeStats();
+    assert.ok(before.pendingTopups >= 1);
+    await income(4_325_000 + 777_000); // so'rovi yo'q summa → REVIEW
+    const after = await billing.incomeStats();
+    assert.equal(after.reviewCount, before.reviewCount + 1);
+    assert.equal(after.lastIncomeAgeMinutes, 0);
+    assert.ok(after.oldestReviewAgeMinutes !== null && after.oldestReviewAgeMinutes >= 0);
+    await billing.cancelTopup(u.id, r.id);
+  });
+
   test('pul tarixi append-only: UPDATE taqiqlangan', async () => {
     const { u } = await funded(5_000);
     const row = await prisma.moneyLedger.findFirstOrThrow({ where: { userId: u.id } });

@@ -54,6 +54,24 @@ export class AssetsService {
     return { assets, files };
   }
 
+  /** asset → uni ishlatadigan nashr qilingan dars mavzulari. Qisqa kesh: audio ko'p sahifada har so'rovda JSON skan qilinmasin. */
+  private readonly topicCache = new Map<string, { topics: string[]; at: number }>();
+  private static readonly TOPIC_CACHE_MS = 5 * 60_000;
+  private static readonly TOPIC_CACHE_MAX = 5_000;
+
+  async topicsUsing(id: string): Promise<string[]> {
+    const hit = this.topicCache.get(id);
+    if (hit && Date.now() - hit.at < AssetsService.TOPIC_CACHE_MS) return hit.topics;
+    // id ParseUUIDPipe'dan o'tgan (faqat hex va '-'), LIKE uchun xavfsiz; baribir parametr sifatida beriladi
+    const rows = await this.prisma.$queryRaw<{ topicId: string }[]>`
+      SELECT DISTINCT l."topicId" FROM "LessonVersion" v JOIN "Lesson" l ON l.id = v."lessonId"
+      WHERE v.status = 'PUBLISHED' AND v.doc::text LIKE ${'%' + id + '%'}`;
+    const topics = rows.map((r) => r.topicId);
+    if (this.topicCache.size >= AssetsService.TOPIC_CACHE_MAX) this.topicCache.clear();
+    this.topicCache.set(id, { topics, at: Date.now() });
+    return topics;
+  }
+
   async read(id: string) {
     const row = await this.prisma.asset.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('Fayl topilmadi');

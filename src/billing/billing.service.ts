@@ -286,7 +286,7 @@ export class BillingService {
    * Kursni 30 kunga sotib olish (yoki uzaytirish). Idempotent: bir xil kalit bilan qayta so'rov pulni ikkinchi marta yechmaydi.
    * `expectedPrice` — foydalanuvchi ko'rgan narx; server narxi o'zgargan bo'lsa PRICE_CHANGED (yechiladigan summa faqat serverdagi narx).
    */
-  async buy(userId: string, directionId: string, idempotencyKey: string, expectedPrice?: number): Promise<{ replay: boolean; balanceUzs: number; endsAt: Date | null }> {
+  async buy(userId: string, directionId: string, idempotencyKey: string, expectedPrice?: number, attempt = 1): Promise<{ replay: boolean; balanceUzs: number; endsAt: Date | null }> {
     const dedupeKey = `buy:${userId}:${idempotencyKey}`;
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -316,7 +316,8 @@ export class BillingService {
       });
     } catch (e) {
       // Parallel ikki so'rov bir xil kalit bilan: ikkinchisi unique buzilishi — natijani qayta o'qib beramiz
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') return this.buy(userId, directionId, idempotencyKey, expectedPrice);
+      // Chegara: kutilmagan doimiy unique buzilishida cheksiz aylanib qolmasin
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002' && attempt < 3) return this.buy(userId, directionId, idempotencyKey, expectedPrice, attempt + 1);
       throw e;
     }
   }

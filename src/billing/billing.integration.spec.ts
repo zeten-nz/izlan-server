@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { LearningService } from '../learning/learning.service';
+import { AssetsService } from '../lessons/assets.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BillingService } from './billing.service';
 
@@ -202,6 +203,25 @@ describe('Balans va kurs xaridi (PostgreSQL)', { skip: !RUN }, () => {
     assert.deepEqual(d.levels[0].topics.map((t) => t.paywalled), [false, true]);
     await billing.buy(u.id, directionId, key());
     assert.equal(await code(learning.topic(u.id, topic2)), 'OK');
+  });
+
+  test("media (S-02): pullik mavzu darsidagi fayl obunasiz yopiq, xariddan keyin ochiq; ishlatilmagan fayl — hech kimga", async () => {
+    const assets = new AssetsService(prisma, { get: () => undefined } as never);
+    const { u } = await funded(29_000);
+    const author = await mkUser();
+    await prisma.userDirection.create({ data: { userId: u.id, directionId, currentLevelOrd: 1, levelAccess: 'OPEN', placedBy: 'ZERO' } });
+    const assetId = randomUUID();
+    const lesson = await prisma.lesson.create({ data: { topicId: topic2, authorId: author.id, title: 'L' } });
+    try {
+      await prisma.lessonVersion.create({ data: { lessonId: lesson.id, status: 'PUBLISHED', doc: { pages: [{ blocks: [{ type: 'audio', assetId }] }] } } });
+      assert.deepEqual(await assets.topicsUsing(assetId), [topic2]);
+      assert.deepEqual(await assets.topicsUsing(randomUUID()), []);
+      assert.equal((await learning.accessibleTopicIds(u.id, [topic2])).size, 0, 'obunasiz — yopiq');
+      await billing.buy(u.id, directionId, key());
+      assert.equal((await learning.accessibleTopicIds(u.id, [topic2])).size, 1, 'xariddan keyin — ochiq');
+    } finally {
+      await prisma.lesson.delete({ where: { id: lesson.id } });
+    }
   });
 
   test('pul tarixi append-only: UPDATE taqiqlangan', async () => {

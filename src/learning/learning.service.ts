@@ -510,11 +510,12 @@ export class LearningService {
     const rows = await this.prisma.userMistake.findMany({
       where: { userId },
       orderBy: { lastAt: 'desc' },
-      include: { question: { include: { rule: true, topic: { include: { level: true } }, level: true } } },
+      include: { question: { include: { rule: true, topic: { include: { level: { include: { direction: { select: { monthlyPriceUzs: true } } } } } }, level: true } } },
     });
     const userDirections = await this.fullDirections(userId);
     const access = new Map(userDirections.map((u) => [u.directionId, u]));
     const { frontiers } = await this.frontiersFor(userId, userDirections);
+    const paid = await activeAccessDirections(this.prisma, userId);
 
     const groups = new Map<string, {
       ruleKey: string; title: string; tipTitle: string; tipBody: string; remember: string; total: number; lastAt: Date;
@@ -535,7 +536,10 @@ export class LearningService {
           id: q.topic.id,
           title: q.topic.title,
           levelCode: q.topic.level.code,
-          accessible: this.canOpenTopic(access.get(q.directionId), q.topic.level.ord, q.topic.ord, frontiers.get(q.directionId) ?? 1),
+          // Obunasiz pullik mavzu "ochiq" ko'rsatilmaydi (bossa 402 bo'lardi)
+          accessible:
+            !(isPaywalledTopic(q.topic.level.direction.monthlyPriceUzs, q.topic.ord) && !paid.has(q.directionId)) &&
+            this.canOpenTopic(access.get(q.directionId), q.topic.level.ord, q.topic.ord, frontiers.get(q.directionId) ?? 1),
         },
         items: [],
       };

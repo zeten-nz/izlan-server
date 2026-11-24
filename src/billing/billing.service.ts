@@ -250,7 +250,8 @@ export class BillingService {
       this.prisma.topupRequest.count({ where: { status: 'PENDING', expiresAt: { gt: now } } }),
       this.prisma.topupRequest.count({ where: { status: 'PAID', closedAt: { gte: new Date(now.getTime() - 86_400_000) } } }),
     ]);
-    const minutesSince = (d: Date | undefined) => (d ? Math.floor((now.getTime() - d.getTime()) / 60_000) : null);
+    // DB soati Node soatidan bir oz oldinda bo'lishi mumkin — manfiy yosh ko'rsatilmaydi
+    const minutesSince = (d: Date | undefined) => (d ? Math.max(0, Math.floor((now.getTime() - d.getTime()) / 60_000)) : null);
     return {
       reviewCount,
       oldestReviewAt: oldestReview?.createdAt ?? null,

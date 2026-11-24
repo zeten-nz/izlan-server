@@ -7,12 +7,21 @@
  *   75-89 → shu darajani takrorlash (hamma darslar ochiq)
  *   >=90  → keyingi darajaga o'tish
  * "Darajamni bilmayman" (UNKNOWN): A1 dan boshlab pog'ona-pog'ona; pog'onada <75% bo'lsa shu daraja.
+ *   Har pog'onada STEP_SIZE ta savol; natija chegaraga yaqin (CONFIRM_LOW..CONFIRM_HIGH) bo'lsa yana CONFIRM_EXTRA ta
+ *   (tasodifiy xato/taxmin natijani buzmasligi uchun). Simulyatsiya (2026-11-24): 5 talik pog'ona + min 10 ga nisbatan
+ *   aniq joylashuv 41–74% → 66–91%, yuqoriga adashish 11–31% → 6–17% (placement.engine.spec.ts).
  */
 
-export const MIN_QUESTIONS = 10;
-export const MAX_QUESTIONS = 30;
-/** UNKNOWN rejimida har bir daraja uchun dastlabki savollar soni (6 daraja × 5 = 30 = MAX) */
-export const STEP_SIZE = 5;
+/** CLAIMED: daraja bankidan beriladigan savollar soni (bank kichik bo'lsa — borini) */
+export const CLAIMED_SIZE = 20;
+/** UNKNOWN: har pog'onaning dastlabki savollari */
+export const STEP_SIZE = 8;
+/** UNKNOWN: chegaraviy natijada qo'shimcha tasdiq savollari */
+export const CONFIRM_EXTRA = 4;
+export const CONFIRM_LOW = 50;
+export const CONFIRM_HIGH = 87;
+/** UNKNOWN: umumiy chegara — undan keyin tasdiq so'ralmaydi, mavjud javoblar bilan hukm qilinadi */
+export const MAX_UNKNOWN_QUESTIONS = 60;
 export const PASS_PCT = 75;
 
 export type Answer = { questionId: string; choice: number; correct: boolean; levelOrd: number };
@@ -23,9 +32,9 @@ export type Verdict = { outcome: Outcome; resultOrd: number };
 
 export const pct = (correct: number, total: number) => (total === 0 ? 0 : Math.round((correct / total) * 100));
 
-/** CLAIMED rejimi: savollar soni — daraja bankiga qarab 10..30 (bank kichik bo'lsa, borini beramiz). */
+/** CLAIMED rejimi: savollar soni — CLAIMED_SIZE (bank kichik bo'lsa, borini beramiz). */
 export function claimedTestSize(poolSize: number): number {
-  return Math.min(MAX_QUESTIONS, poolSize);
+  return Math.min(CLAIMED_SIZE, poolSize);
 }
 
 export function judgeClaimed(scorePct: number, claimedOrd: number, maxOrd: number): Verdict {
@@ -41,19 +50,22 @@ export type UnknownStep = { type: "ask"; levelOrd: number } | { type: "done"; re
 
 /**
  * UNKNOWN rejimida keyingi harakat. `available(levelOrd)` — shu darajada hali berilmagan savollar bormi.
- * Qoida: har daraja uchun STEP_SIZE ta savol; pog'onada <75% bo'lsa va jami savol MIN dan kam bo'lsa,
- * shu darajadan yana beriladi (jami kamida 10 ta); yiqilgan pog'ona — foydalanuvchi darajasi.
+ * Qoida: har daraja uchun STEP_SIZE ta savol; natija CONFIRM_LOW..CONFIRM_HIGH oralig'ida bo'lsa yana CONFIRM_EXTRA ta.
+ * >= PASS_PCT — keyingi darajaga; aks holda — shu daraja foydalanuvchi darajasi.
  */
 export function nextUnknownStep(answers: Answer[], maxOrd: number, available: (levelOrd: number) => boolean): UnknownStep {
+  const capped = answers.length >= MAX_UNKNOWN_QUESTIONS;
   for (let ord = 1; ord <= maxOrd; ord++) {
     const inLevel = answers.filter((a) => a.levelOrd === ord);
-    if (inLevel.length < STEP_SIZE) {
+    if (inLevel.length < STEP_SIZE && !capped) {
       if (available(ord)) return { type: "ask", levelOrd: ord };
       if (inLevel.length === 0) return { type: "done", resultOrd: Math.max(1, ord - 1) };
     }
+    if (inLevel.length === 0) return { type: "done", resultOrd: Math.max(1, ord - 1) };
     const score = pct(inLevel.filter((a) => a.correct).length, inLevel.length);
+    const borderline = score >= CONFIRM_LOW && score <= CONFIRM_HIGH;
+    if (borderline && !capped && inLevel.length < STEP_SIZE + CONFIRM_EXTRA && available(ord)) return { type: "ask", levelOrd: ord };
     if (score >= PASS_PCT) continue;
-    if (answers.length < MIN_QUESTIONS && available(ord)) return { type: "ask", levelOrd: ord };
     return { type: "done", resultOrd: ord };
   }
   return { type: "done", resultOrd: maxOrd };
@@ -73,4 +85,14 @@ export function pickDiverse<T extends { ruleId: string }>(pool: T[], count: numb
     }
   }
   return out.sort(() => rand() - 0.5);
+}
+
+/** UNKNOWN: pog'onada hali so'ralmagan qoidadan savol (bo'lmasa — eng kam so'ralgan qoidadan). */
+export function pickNextDiverse<T extends { ruleId: string }>(pool: T[], askedRuleIds: string[], rand: () => number = Math.random): T | null {
+  if (pool.length === 0) return null;
+  const seen = new Map<string, number>();
+  for (const r of askedRuleIds) seen.set(r, (seen.get(r) ?? 0) + 1);
+  const min = Math.min(...pool.map((q) => seen.get(q.ruleId) ?? 0));
+  const best = pool.filter((q) => (seen.get(q.ruleId) ?? 0) === min);
+  return best[Math.floor(rand() * best.length)] ?? null;
 }

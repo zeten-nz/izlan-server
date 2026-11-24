@@ -7,6 +7,8 @@
  *   npm run db:seed:catalog    # faqat demo katalog (faqat katalog bo'sh bo'lsa)
  *   npm run db:seed:cosmetics  # boshlang'ich 12 ta bezak (faqat yo'qlarini yaratadi; narx/egalik yo'q)
  *   npm run db:seed:catalog -- --missing   # faqat yo'q yo'nalishlarni qo'shadi (mavjudiga tegmaydi)
+ *   npm run db:seed:placement  # ingliz tili daraja testi banki: yo'q savol/qoidalarni yaratadi, tuzatilganlarini yangilaydi
+ *                              # (lessons seed'idan KEYIN; --dry-run — faqat nima o'zgarishini ko'rsatadi)
  *
  * Dastlabki ADMIN muhit o'zgaruvchilaridan olinadi (parol kodda yo'q): ./seed/admin.ts ga qarang.
  * PRODUCTIONDA (NODE_ENV=production) tasodifan ishga tushmasligi uchun `--confirm` (yoki SEED_CONFIRM=yes) shart.
@@ -17,13 +19,14 @@ import { PrismaClient } from "@prisma/client";
 import { seedAdmin } from "./seed/admin";
 import { seedCatalog } from "./seed/catalog";
 import { seedCosmetics } from "./seed/cosmetics";
+import { seedPlacement } from "./seed/placement";
 
-type Part = "admin" | "catalog" | "cosmetics" | "all";
+type Part = "admin" | "catalog" | "cosmetics" | "placement" | "all";
 
 async function main() {
   const args = process.argv.slice(2);
   const part = (args.find((a) => !a.startsWith("--")) ?? "all") as Part;
-  if (!["admin", "catalog", "cosmetics", "all"].includes(part)) throw new Error(`Noma'lum bo'lim: ${part} (admin | catalog | cosmetics | all)`);
+  if (!["admin", "catalog", "cosmetics", "placement", "all"].includes(part)) throw new Error(`Noma'lum bo'lim: ${part} (admin | catalog | cosmetics | placement | all)`);
 
   if (process.env.NODE_ENV === "production" && !args.includes("--confirm") && process.env.SEED_CONFIRM !== "yes") {
     throw new Error("Productionda seed faqat ongli ravishda ishga tushiriladi: --confirm bayrog'ini bering (yoki SEED_CONFIRM=yes).");
@@ -51,6 +54,16 @@ async function main() {
     if (part === "cosmetics" || part === "all") {
       const r = await seedCosmetics(prisma);
       console.log(`✔ Bezaklar: yaratildi ${r.created.length} ta, mavjud (tegilmadi) ${r.existing.length} ta. Narx va egalik berilmadi.`);
+    }
+    // "all" ga kirmaydi: mavzu nomlari lessons seed'idan keyin to'g'ri bo'ladi
+    if (part === "placement") {
+      const dryRun = args.includes("--dry-run");
+      const r = await seedPlacement(prisma, { dryRun });
+      console.log(
+        `${dryRun ? "• (dry-run) " : "✔ "}Daraja testi banki: qoida yaratildi ${r.rulesCreated.length}, savol yaratildi ${r.created.length}, ` +
+          `yangilandi ${r.updated.length} [${r.updated.join(", ") || "—"}], o'zgarmagan ${r.unchanged}. ` +
+          `Darajalar: ${Object.entries(r.perLevel).map(([k, v]) => `${k} ${v}`).join(", ")}`,
+      );
     }
   } finally {
     await prisma.$disconnect();

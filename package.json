@@ -16,6 +16,8 @@
     "db:seed:admin": "tsx prisma/seed.ts admin",
     "db:seed:catalog": "tsx prisma/seed.ts catalog",
     "db:seed:cosmetics": "tsx prisma/seed.ts cosmetics",
+    "db:seed:placement": "tsx prisma/seed.ts placement",
+    "check:placement": "tsx prisma/seed/placement.check.ts",
     "admin:create": "node dist/cli/create-admin.js",
     "achievements:reconcile": "node dist/cli/reconcile-achievements.js"
   },

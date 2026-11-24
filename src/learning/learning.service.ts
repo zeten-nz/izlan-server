@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { activeAccessDirections } from '../billing/billing.service';
+import { isPaidCourse, isPaywalledTopic } from '../billing/billing.rules';
 import { Prisma, type PlacementAttempt } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -50,6 +52,8 @@ export class LearningService {
       title: d.title,
       description: d.description,
       active: d.active,
+      /** Oylik narx (so'm); null — bepul kurs */
+      monthlyPriceUzs: isPaidCourse(d.monthlyPriceUzs) ? d.monthlyPriceUzs : null,
       /** Daraja aniqlash testi savollari bormi: yo'q bo'lsa o'quvchiga faqat "0 dan boshlash" ko'rsatiladi */
       placementReady: hasQuestions.has(d.id),
       levels: d.levels.map((l) => ({
@@ -80,6 +84,11 @@ export class LearningService {
     });
 
     const { frontiers, counts } = await this.frontiersFor(userId, userDirections);
+    const [paid, accessRows] = await Promise.all([
+      activeAccessDirections(this.prisma, userId),
+      this.prisma.courseAccess.findMany({ where: { userId }, select: { directionId: true, endsAt: true } }),
+    ]);
+    const accessEnds = new Map(accessRows.map((a) => [a.directionId, a.endsAt]));
 
     const directions = userDirections.map((ud) => {
       const current = ud.currentLevelOrd;
@@ -102,6 +111,8 @@ export class LearningService {
               ord: t.ord,
               title: t.title,
               state: topicStateOf(current, ud.levelAccess, lv.ord, t.ord, frontier),
+              /** Pullik va obuna yo'q: mavzu ochilmaydi, «Kursni sotib olish» ko'rsatiladi */
+              paywalled: isPaywalledTopic(ud.direction.monthlyPriceUzs, t.ord) && !paid.has(ud.directionId),
               lessons: c
                 ? { total: c.total, completed: c.completed, topicCompleted: isTopicCompleted(c), contentPreparing: isContentPreparing(c) }
                 : null,
@@ -116,6 +127,9 @@ export class LearningService {
         slug: ud.direction.slug,
         title: ud.direction.title,
         kind: ud.direction.kind,
+        monthlyPriceUzs: isPaidCourse(ud.direction.monthlyPriceUzs) ? ud.direction.monthlyPriceUzs : null,
+        accessEndsAt: accessEnds.get(ud.directionId) ?? null,
+        hasAccess: paid.has(ud.directionId),
         currentLevelOrd: current,
         levelAccess: ud.levelAccess,
         placedBy: ud.placedBy,
@@ -563,13 +577,15 @@ export class LearningService {
   async accessibleTopicIds(userId: string, topicIds: string[]): Promise<Set<string>> {
     const out = new Set<string>();
     if (topicIds.length === 0) return out;
-    const topics = await this.prisma.topic.findMany({ where: { id: { in: [...new Set(topicIds)] } }, include: { level: true } });
+    const topics = await this.prisma.topic.findMany({ where: { id: { in: [...new Set(topicIds)] } }, include: { level: { include: { direction: { select: { monthlyPriceUzs: true } } } } } });
+    const paid = await activeAccessDirections(this.prisma, userId);
     const uds = await this.fullDirections(userId);
     const access = new Map(uds.map((u) => [u.directionId, u]));
     const { frontiers } = await this.frontiersFor(userId, uds);
     for (const t of topics) {
       const ud = access.get(t.level.directionId);
-      if (this.canOpenTopic(ud, t.level.ord, t.ord, frontiers.get(t.level.directionId) ?? 1)) out.add(t.id);
+      const paywalled = isPaywalledTopic(t.level.direction.monthlyPriceUzs, t.ord) && !paid.has(t.level.directionId);
+      if (!paywalled && this.canOpenTopic(ud, t.level.ord, t.ord, frontiers.get(t.level.directionId) ?? 1)) out.add(t.id);
     }
     return out;
   }
@@ -591,6 +607,19 @@ export class LearningService {
     const frontier = ud ? ((await this.frontiersFor(userId, [ud])).frontiers.get(ud.directionId) ?? 1) : 1;
     if (!this.canOpenTopic(ud, topic.level.ord, topic.ord, frontier)) {
       throw new ForbiddenException('Bu mavzu hali ochilmagan: avval oldingi bosqichlarni tugating');
+    }
+    const price = topic.level.direction.monthlyPriceUzs;
+    if (isPaywalledTopic(price, topic.ord) && !(await activeAccessDirections(this.prisma, userId)).has(topic.level.directionId)) {
+      throw new HttpException(
+        {
+          code: 'PAYMENT_REQUIRED',
+          message: 'Bu mavzu pullik: davom etish uchun kursni sotib oling',
+          directionId: topic.level.directionId,
+          directionTitle: topic.level.direction.title,
+          monthlyPriceUzs: price,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
     return {
       id: topic.id,

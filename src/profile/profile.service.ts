@@ -45,7 +45,7 @@ export class ProfileService {
   /** Balans qatori bo'lmasa 0 (o'qishda yozuv yaratilmaydi). */
   private async wallet(userId: string) {
     const w = await this.prisma.wallet.findUnique({ where: { userId } });
-    return { xpBalance: w?.xpBalance ?? 0, totalXpEarned: w?.totalXpEarned ?? 0, izlBalance: w?.izlBalance ?? 0 };
+    return { xpBalance: w?.xpBalance ?? 0, totalXpEarned: w?.totalXpEarned ?? 0, izlBalance: w?.izlBalance ?? 0, balanceUzs: w?.balanceUzs ?? 0 };
   }
 
   private async equippedViews(userId: string) {

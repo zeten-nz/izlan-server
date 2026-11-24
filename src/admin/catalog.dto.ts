@@ -6,11 +6,15 @@ import {
   IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
+  ValidateIf,
 } from 'class-validator';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : value);
@@ -51,6 +55,14 @@ export class UpdateDirectionDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  /** Oylik narx (so'm). null yoki 0 — bepul kurs. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsInt({ message: "Narx butun son bo'lsin" })
+  @Min(0, { message: "Narx manfiy bo'lmasin" })
+  @Max(100_000_000, { message: "Narx juda katta" })
+  monthlyPriceUzs?: number | null;
 }
 
 export class CreateLevelDto {

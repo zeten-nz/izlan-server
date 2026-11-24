@@ -5,6 +5,7 @@ import { Prisma } from '@prisma/client';
 import { MailSendError } from '../mail/mail.types';
 import { AuthService } from './auth.service';
 import type { ForgotDto, RegisterDto, ResendDto, ResetPasswordDto, VerifyRegistrationDto } from './dto';
+import { LEGAL_VERSION } from './dto';
 
 // ───────────── Xotiradagi soxta Prisma: bitta op = bitta atomik qadam (haqiqiy DB'dagi shartli UPDATE kabi) ─────────────
 
@@ -91,6 +92,7 @@ function setup() {
     pendingRegistration: new Table(['email']),
     passwordReset: new Table(['userId']),
     session: new Table(),
+    auditLog: new Table(),
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
   };
   const config = {
@@ -143,9 +145,9 @@ test('register: kod yuboriladi va bazada ochiq matn saqlanmaydi', async () => {
 
 test('register: cooldown ichida ikkinchi so\'rov 429, xat ikki marta ketmaydi', async () => {
   const { mail, auth } = setup();
-  await auth.register(reg());
+  const { clientToken: ct } = await auth.register(reg());
   assert.equal(await status(auth.register(reg())), 429);
-  assert.equal(await status(auth.resendRegistration({ email: EMAIL } as ResendDto)), 429);
+  assert.equal(await status(auth.resendRegistration({ email: EMAIL } as ResendDto, ct)), 429);
   assert.equal(mail.calls.length, 1);
 });
 
@@ -198,43 +200,107 @@ test('register: provayder 429 (rate_limited) → 429, holat tiklanadi', async ()
 
 test('verify: to\'g\'ri kod hisob yaratadi; kod qayta ishlatilmaydi', async () => {
   const { prisma, mail, auth } = setup();
-  await auth.register(reg());
+  const { clientToken: ct } = await auth.register(reg());
   const code = mail.last.code;
-  const s = await auth.verifyRegistration(verify(code));
+  const s = await auth.verifyRegistration(verify(code), ct);
   assert.equal(s.user.email, EMAIL);
   assert.equal(prisma.user.rows.length, 1);
-  assert.equal(await status(auth.verifyRegistration(verify(code))), 400);
+  assert.equal(await status(auth.verifyRegistration(verify(code), ct)), 400);
   assert.equal(prisma.user.rows.length, 1);
+});
+
+test('verify: hisob bilan birga rozilik qaydi (consent.accept, LEGAL_VERSION) yoziladi', async () => {
+  const { prisma, mail, auth } = setup();
+  const { clientToken: ct } = await auth.register(reg());
+  const s = await auth.verifyRegistration(verify(mail.last.code), ct);
+  assert.equal(prisma.auditLog.rows.length, 1);
+  const log = prisma.auditLog.rows[0];
+  assert.equal(log.action, 'consent.accept');
+  assert.equal(log.actorId, s.user.id);
+  assert.equal(log.entityId, s.user.id);
+  assert.deepEqual(log.meta, { version: LEGAL_VERSION, documents: ['oferta', 'maxfiylik'] });
 });
 
 test('verify: bir vaqtda kelgan ikki so\'rovdan faqat bittasi o\'tadi', async () => {
   const { prisma, mail, auth } = setup();
-  await auth.register(reg());
+  const { clientToken: ct } = await auth.register(reg());
   const code = mail.last.code;
-  const res = await Promise.all([auth.verifyRegistration(verify(code)), auth.verifyRegistration(verify(code))].map(status));
+  const res = await Promise.all([auth.verifyRegistration(verify(code), ct), auth.verifyRegistration(verify(code), ct)].map(status));
   assert.deepEqual([...res].sort(), [200, 400]);
   assert.equal(prisma.user.rows.length, 1);
 });
 
 test('verify: noto\'g\'ri kod urinishlari cheklanadi (parallel ham aylanib o\'tmaydi)', async () => {
   const { prisma, mail, auth } = setup();
-  await auth.register(reg());
+  const { clientToken: ct } = await auth.register(reg());
   const right = mail.last.code;
   const wrong = right === '000000' ? '111111' : '000000';
-  await Promise.all(Array.from({ length: 20 }, () => status(auth.verifyRegistration(verify(wrong)))));
+  await Promise.all(Array.from({ length: 20 }, () => status(auth.verifyRegistration(verify(wrong), ct))));
   const attempts = prisma.pendingRegistration.rows[0]?.attempts as number | undefined;
   assert.ok(attempts === undefined || attempts <= 5);
   // limit tugadi: to'g'ri kod ham o'tmaydi
-  assert.equal(await status(auth.verifyRegistration(verify(right))), 400);
+  assert.equal(await status(auth.verifyRegistration(verify(right), ct)), 400);
   assert.equal(prisma.user.rows.length, 0);
 });
 
 test('verify: eskirgan kod rad etiladi', async () => {
   const { prisma, mail, auth } = setup();
-  await auth.register(reg());
+  const { clientToken: ct } = await auth.register(reg());
   prisma.pendingRegistration.rows[0].expiresAt = new Date(Date.now() - 1000);
-  assert.equal(await status(auth.verifyRegistration(verify(mail.last.code))), 400);
+  assert.equal(await status(auth.verifyRegistration(verify(mail.last.code), ct)), 400);
   assert.equal(prisma.user.rows.length, 0);
+});
+
+// ───────────── Brauzerga bog'lash (S-01: kutilayotgan ro'yxatni egallab olish) ─────────────
+
+/** Cooldown o'tdi deb hisoblash (fake bazada lastSentAt ni orqaga suradi) */
+const pastCooldown = (prisma: ReturnType<typeof setup>['prisma']) => {
+  for (const r of prisma.pendingRegistration.rows) r.lastSentAt = new Date(Date.now() - 120_000);
+};
+
+test("S-01: begona odam shu email bilan qayta register qilsa, egasi kod bilan hujumchi parolida hisob yarata olmaydi", async () => {
+  const { prisma, mail, auth } = setup();
+  const victim = await auth.register(reg());
+  pastCooldown(prisma);
+  await auth.register(reg({ username: 'hacker', password: 'Hacker123', confirmPassword: 'Hacker123' }));
+  const codeInVictimsInbox = mail.last.code; // hujumchi so'rovi uchun ham xat egasiga boradi
+  assert.equal(await status(auth.verifyRegistration(verify(codeInVictimsInbox), victim.clientToken)), 400);
+  assert.equal(await status(auth.resendRegistration({ email: EMAIL } as ResendDto, victim.clientToken)), 400);
+  assert.equal(prisma.user.rows.length, 0);
+  // Begona brauzer urinishlari egasining 5 ta urinishini yemaydi
+  assert.equal(prisma.pendingRegistration.rows[0].attempts, 0);
+});
+
+test("S-01: egasi qayta register qilsa qator yana unga bog'lanadi va hisob o'z ma'lumotlari bilan yaratiladi", async () => {
+  const { prisma, mail, auth } = setup();
+  await auth.register(reg());
+  pastCooldown(prisma);
+  await auth.register(reg({ username: 'hacker', password: 'Hacker123', confirmPassword: 'Hacker123' }));
+  pastCooldown(prisma);
+  const again = await auth.register(reg());
+  const s = await auth.verifyRegistration(verify(mail.last.code), again.clientToken);
+  assert.equal(s.user.username, 'ali');
+});
+
+test("S-01: cookie'siz, noto'g'ri formatdagi yoki boshqa token bilan verify/resend — 400", async () => {
+  const { prisma, mail, auth } = setup();
+  const { clientToken } = await auth.register(reg());
+  const code = mail.last.code;
+  for (const t of [undefined, '', 'x', 'a'.repeat(43), `${clientToken}!`]) {
+    assert.equal(await status(auth.verifyRegistration(verify(code), t)), 400);
+  }
+  pastCooldown(prisma);
+  assert.equal(await status(auth.resendRegistration({ email: EMAIL } as ResendDto, undefined)), 400);
+  assert.equal(await status(auth.resendRegistration({ email: EMAIL } as ResendDto, clientToken)), 200);
+  assert.equal(prisma.user.rows.length, 0);
+});
+
+test("S-01: bazada faqat token xeshi saqlanadi, tokenning o'zi emas", async () => {
+  const { prisma, auth } = setup();
+  const { clientToken } = await auth.register(reg());
+  const row = prisma.pendingRegistration.rows[0];
+  assert.match(String(row.clientHash), /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(prisma.pendingRegistration.rows).includes(clientToken));
 });
 
 // ───────────── Parolni tiklash ─────────────

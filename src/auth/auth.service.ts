@@ -21,6 +21,7 @@ import {
   verifyPassword,
 } from './crypto.util';
 import type { ForgotDto, LoginDto, RegisterDto, ResendDto, ResetPasswordDto, VerifyRegistrationDto } from './dto';
+import { LEGAL_VERSION } from './dto';
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -38,6 +39,10 @@ export type PublicUser = {
   birthYear: number;
   role: User['role'];
 };
+
+/** Ro'yxatdan o'tish so'rovi faqat uni boshlagan brauzer (httpOnly cookie tokeni) bilan davom ettiriladi. */
+const NOT_THIS_CLIENT = "Ro'yxatdan o'tish so'rovi topilmadi yoki boshqa qurilmada boshlangan. Qaytadan boshlang";
+const CLIENT_TOKEN_RE = /^[A-Za-z0-9_-]{20,100}$/;
 
 export type IssuedSession = { token: string; remember: boolean; expiresAt: Date; user: PublicUser };
 
@@ -70,7 +75,12 @@ export class AuthService {
 
   // ───────────── Ro'yxatdan o'tish ─────────────
 
-  async register(dto: RegisterDto): Promise<{ email: string; resendInSeconds: number }> {
+  /**
+   * Har register — yangi brauzer tokeni (javobda controller cookie qilib qo'yadi). Qatorda faqat uning sha256 xeshi.
+   * Boshqa odam shu email bilan qayta register qilsa, qator unga bog'lanadi: egasining brauzeri endi resend/verify
+   * qila olmaydi (o'zi qayta boshlaydi), hujumchi esa kodni ko'rmaydi — hisob begona parol bilan yaratilmaydi (S-01).
+   */
+  async register(dto: RegisterDto): Promise<{ email: string; resendInSeconds: number; clientToken: string }> {
     if (dto.password !== dto.confirmPassword) {
       throw fieldError(HttpStatus.BAD_REQUEST, { confirmPassword: 'Parollar mos kelmadi' });
     }
@@ -96,7 +106,9 @@ export class AuthService {
       expiresAt: new Date(now.getTime() + this.config.otpTtlMs),
       lastSentAt: now,
     };
+    const client = newSessionToken();
     const data = {
+      clientHash: client.hash,
       username: dto.username,
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -134,14 +146,14 @@ export class AuthService {
       }
     };
     await this.deliver(dto.email, code, 'register', otp, rollback);
-    return { email: dto.email, resendInSeconds: this.config.otpResendMs / 1000 };
+    return { email: dto.email, resendInSeconds: this.config.otpResendMs / 1000, clientToken: client.token };
   }
 
-  async resendRegistration(dto: ResendDto): Promise<{ resendInSeconds: number }> {
+  async resendRegistration(dto: ResendDto, clientToken: string | undefined): Promise<{ resendInSeconds: number }> {
     await this.assertMailCapacity();
     const pending = await this.prisma.pendingRegistration.findUnique({ where: { email: dto.email } });
-    if (!pending) {
-      throw fieldError(HttpStatus.BAD_REQUEST, {}, "Ro'yxatdan o'tish so'rovi topilmadi. Qaytadan boshlang");
+    if (!pending || !this.ownsPending(pending, clientToken)) {
+      throw fieldError(HttpStatus.BAD_REQUEST, {}, NOT_THIS_CLIENT);
     }
     this.assertCooldown(pending.lastSentAt);
     const code = generateOtp();
@@ -172,11 +184,13 @@ export class AuthService {
     return { resendInSeconds: this.config.otpResendMs / 1000 };
   }
 
-  async verifyRegistration(dto: VerifyRegistrationDto, userAgent?: string): Promise<IssuedSession> {
+  async verifyRegistration(dto: VerifyRegistrationDto, clientToken: string | undefined, userAgent?: string): Promise<IssuedSession> {
     const pending = await this.prisma.pendingRegistration.findUnique({ where: { email: dto.email } });
     if (!pending) {
       throw fieldError(HttpStatus.BAD_REQUEST, { code: "Kod eskirgan yoki so'rov topilmadi. Qaytadan boshlang" });
     }
+    // Urinish hisoblanmaydi: begona brauzer egasining 5 ta urinishini yeb qo'ya olmasin
+    if (!this.ownsPending(pending, clientToken)) throw fieldError(HttpStatus.BAD_REQUEST, { code: NOT_THIS_CLIENT });
     const row = await this.verifyOtp(
       pending,
       `register:${dto.email}`,
@@ -202,7 +216,7 @@ export class AuthService {
         // Bir martalik: faqat bitta parallel so'rov kodni iste'mol qila oladi
         const used = await tx.pendingRegistration.deleteMany({ where: { id: row.id, codeHash: row.codeHash } });
         if (used.count !== 1) throw fieldError(HttpStatus.BAD_REQUEST, { code: "Kod noto'g'ri yoki eskirgan" });
-        return tx.user.create({
+        const created = await tx.user.create({
           data: {
             email: row.email,
             username: row.username,
@@ -213,6 +227,11 @@ export class AuthService {
             emailVerifiedAt: new Date(),
           },
         });
+        // Rozilik qaydi: register bosqichida acceptTerms=true majburiy (RegisterDto); hisob yaratilganda versiya bilan yoziladi
+        await tx.auditLog.create({
+          data: { actorId: created.id, action: 'consent.accept', entity: 'User', entityId: created.id, meta: { version: LEGAL_VERSION, documents: ['oferta', 'maxfiylik'] } },
+        });
+        return created;
       });
     } catch (e) {
       if (isUnique(e)) {
@@ -369,6 +388,12 @@ export class AuthService {
   }
 
   // ───────────── Ichki yordamchilar ─────────────
+
+  /** So'rov shu brauzerda boshlanganmi (cookie tokeni xeshi mosmi). Bog'lanmagan (eski) qator — yo'q. */
+  private ownsPending(row: { clientHash: string | null }, token: string | undefined): boolean {
+    if (!row.clientHash || !token || !CLIENT_TOKEN_RE.test(token)) return false;
+    return safeEqualHex(row.clientHash, hashSessionToken(token));
+  }
 
   private async issueSession(user: User, remember: boolean, userAgent?: string): Promise<IssuedSession> {
     const { token, hash } = newSessionToken();

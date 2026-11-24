@@ -88,6 +88,9 @@ model PendingRegistration {
   birthYear    Int
   passwordHash String
   codeHash     String
+  /// sha256(brauzerdagi httpOnly "ro'yxatdan o'tish" cookie tokeni): resend/verify faqat so'rovni boshlagan brauzerdan.
+  /// Boshqa odam shu email bilan qayta register qilsa, qator unga bog'lanadi va egasining kodi bilan hisob yaratilmaydi.
+  clientHash   String?
   attempts     Int      @default(0)
   expiresAt    DateTime
   lastSentAt   DateTime

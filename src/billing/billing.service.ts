@@ -267,6 +267,43 @@ export class BillingService {
   }
 
   /**
+   * Admin "Kirimlar" sahifasi: hozir to'lov kutayotgan so'rovlar (kim, qancha, qachongacha) va oxirgi kirimlar.
+   * Karta raqami/xom bildirishnoma matni qaytarilmaydi.
+   */
+  async incomeOverview(now = new Date(), limit = 30) {
+    const [pending, recent] = await Promise.all([
+      this.prisma.topupRequest.findMany({
+        where: { status: 'PENDING', expiresAt: { gt: now } },
+        include: { user: { select: { username: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+      this.prisma.bankIncome.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        select: { id: true, source: true, amount: true, receivedAt: true, status: true, reason: true, creditedAmount: true, creditedUserId: true, createdAt: true },
+      }),
+    ]);
+    const ids = [...new Set(recent.map((r) => r.creditedUserId).filter((x): x is string => !!x))];
+    const users = ids.length ? await this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, username: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.username]));
+    return {
+      pending: pending.map((p) => ({ id: p.id, username: p.user.username, amount: p.amount, baseAmount: p.baseAmount, createdAt: p.createdAt, expiresAt: p.expiresAt })),
+      recent: recent.map((r) => ({
+        id: r.id,
+        source: r.source,
+        amount: r.amount,
+        receivedAt: r.receivedAt,
+        status: r.status,
+        reasonText: r.status === 'REVIEW' && r.reason ? (REVIEW_REASON_UZ[r.reason as keyof typeof REVIEW_REASON_UZ] ?? r.reason) : null,
+        creditedAmount: r.creditedAmount,
+        username: r.creditedUserId ? (nameOf.get(r.creditedUserId) ?? null) : null,
+        createdAt: r.createdAt,
+      })),
+    };
+  }
+
+  /**
    * Oylik kirim hisoboti (Toshkent vaqti bo'yicha, receivedAt): egasi savdoni qo'lda hisobga olishi uchun.
    * month berilmasa — joriy oy.
    */

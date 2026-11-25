@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decideMatch, defaultCreditFor, extendAccess, hasActiveAccess, isPaidCourse, isPaywalledTopic, pickSuffix, validateTopupBase, type TopupCandidate } from './billing.rules';
+import { decideMatch, summarizeIncomes, tashkentMonthOf, tashkentMonthRange, defaultCreditFor, extendAccess, hasActiveAccess, isPaidCourse, isPaywalledTopic, pickSuffix, validateTopupBase, type TopupCandidate } from './billing.rules';
 
 const DAY = 86_400_000;
 
@@ -80,4 +80,33 @@ test('moslash: muddat ichida MATCH, kechiksa LATE_MATCH, takror/bekor/noto\'g\'r
   // Summa qayta berilgan: eng oxirgi so'rov egasi oladi
   const old = req({ id: 'old', userId: 'u0', status: 'EXPIRED', createdAt: at(-60), expiresAt: at(-40) });
   assert.deepEqual(decideMatch(inc(5), [old, req()]), { type: 'MATCH', requestId: 'r1', userId: 'u1', credit: 50_000 });
+});
+
+test('hisobot: oy chegaralari Toshkent (UTC+5) bo\'yicha, noto\'g\'ri format rad etiladi', () => {
+  const r = tashkentMonthRange('2026-11')!;
+  assert.equal(r.from.toISOString(), '2026-10-31T19:00:00.000Z');
+  assert.equal(r.to.toISOString(), '2026-11-30T19:00:00.000Z');
+  assert.equal(tashkentMonthRange('2026-12')!.to.toISOString(), '2026-12-31T19:00:00.000Z');
+  for (const bad of ['2026-13', '2026-1', '26-11', '2026-11-01', '', '1999-01']) assert.equal(tashkentMonthRange(bad), null, bad);
+  // 30-noyabr 19:30 UTC = 1-dekabr 00:30 Toshkent
+  assert.equal(tashkentMonthOf(new Date('2026-11-30T19:30:00Z')), '2026-12');
+  assert.equal(tashkentMonthOf(new Date('2026-11-30T18:59:00Z')), '2026-11');
+});
+
+test('hisobot: credited / review / ignored ajratiladi, kunlar Toshkent sanasi bo\'yicha', () => {
+  const s = summarizeIncomes([
+    { amount: 50_001, status: 'MATCHED', receivedAt: new Date('2026-11-01T10:00:00Z'), creditedAmount: 50_000 },
+    { amount: 30_007, status: 'LATE_MATCHED', receivedAt: new Date('2026-11-01T19:30:00Z'), creditedAmount: 30_000 }, // Toshkent: 2-noyabr
+    { amount: 10_000, status: 'ASSIGNED', receivedAt: new Date('2026-11-01T11:00:00Z'), creditedAmount: 10_000 },
+    { amount: 12_345, status: 'REVIEW', receivedAt: new Date('2026-11-03T10:00:00Z'), creditedAmount: null },
+    { amount: 200_000, status: 'IGNORED', receivedAt: new Date('2026-11-03T10:00:00Z'), creditedAmount: null },
+  ]);
+  assert.deepEqual(s.credited, { count: 3, sum: 90_008, creditedSum: 90_000 });
+  assert.deepEqual(s.review, { count: 1, sum: 12_345 });
+  assert.deepEqual(s.ignored, { count: 1, sum: 200_000 });
+  assert.deepEqual(s.days, [
+    { day: '2026-11-01', count: 2, sum: 60_001 },
+    { day: '2026-11-02', count: 1, sum: 30_007 },
+  ]);
+  assert.deepEqual(summarizeIncomes([]), { credited: { count: 0, sum: 0, creditedSum: 0 }, review: { count: 0, sum: 0 }, ignored: { count: 0, sum: 0 }, days: [] });
 });

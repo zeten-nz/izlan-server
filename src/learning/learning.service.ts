@@ -14,6 +14,7 @@ import {
 } from './progress';
 import {
   claimedTestSize,
+  pickNextDiverse,
   judgeClaimed,
   nextUnknownStep,
   pct,
@@ -319,7 +320,7 @@ export class LearningService {
     return attempt.done ? this.resultView(attempt) : this.questionView(attempt);
   }
 
-  private async questionView(attempt: PlacementAttempt & { direction: { levels: Array<{ ord: number; code: string }> } }) {
+  private async questionView(attempt: PlacementAttempt & { direction: { levels: Array<{ id: string; ord: number; code: string }> } }) {
     const answers = attempt.answers as unknown as Answer[];
     const currentId = attempt.questionIds[answers.length];
     const q = await this.prisma.question.findUniqueOrThrow({ where: { id: currentId } });
@@ -333,6 +334,11 @@ export class LearningService {
       levelCode: level?.code ?? null,
       index: answers.length + 1,
       total,
+      /** UNKNOWN: joriy pog'ona (progress uchun) */
+      stage: attempt.mode === 'UNKNOWN' ? (() => {
+        const lv = attempt.direction.levels.find((l) => l.id === q.levelId);
+        return lv ? { ord: lv.ord, code: lv.code, of: attempt.direction.levels.length } : null;
+      })() : null,
       question: { id: q.id, prompt: q.prompt, instruction: q.instruction, options: q.options },
     };
   }
@@ -387,15 +393,17 @@ export class LearningService {
           resultOrd = step.resultOrd;
         } else {
           const lv = levels.find((l) => l.ord === step.levelOrd)!;
-          const pool = await tx.question.findMany({
-            where: { levelId: lv.id, id: { notIn: questionIds } },
-            select: { id: true, ruleId: true },
-          });
-          if (pool.length === 0) {
+          const [pool, askedHere] = await Promise.all([
+            tx.question.findMany({ where: { levelId: lv.id, id: { notIn: questionIds } }, select: { id: true, ruleId: true } }),
+            tx.question.findMany({ where: { levelId: lv.id, id: { in: questionIds } }, select: { ruleId: true } }),
+          ]);
+          // Pog'onada qoidalar navbatma-navbat: bitta mavzudan ketma-ket savol tushmasin
+          const nextQ = pickNextDiverse(pool, askedHere.map((q) => q.ruleId));
+          if (!nextQ) {
             finished = true;
             resultOrd = step.levelOrd;
           } else {
-            questionIds = [...questionIds, pickDiverse(pool, 1)[0].id];
+            questionIds = [...questionIds, nextQ.id];
           }
         }
       }

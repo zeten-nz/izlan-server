@@ -124,3 +124,59 @@ export function decideMatch(income: { amount: number; hasFraction: boolean; rece
       return { type: 'REVIEW', reason: 'CANCELLED' };
   }
 }
+
+// ───────────── Oylik kirim hisoboti (o'zini o'zi band qilgan shaxs savdoni qo'lda hisobga oladi) ─────────────
+
+/** Toshkent vaqti UTC+5 (yozgi vaqt yo'q). Oy va kun chegaralari shu bo'yicha. */
+export const TASHKENT_OFFSET_MS = 5 * 3_600_000;
+
+/** "YYYY-MM" → Toshkent bo'yicha [boshi, oxiri) UTC oralig'i; noto'g'ri format → null. */
+export function tashkentMonthRange(month: string): { from: Date; to: Date } | null {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (y < 2020 || y > 2100) return null;
+  return { from: new Date(Date.UTC(y, mo - 1, 1) - TASHKENT_OFFSET_MS), to: new Date(Date.UTC(y, mo, 1) - TASHKENT_OFFSET_MS) };
+}
+
+/** Hozirgi oy Toshkent bo'yicha, "YYYY-MM". */
+export function tashkentMonthOf(d: Date): string {
+  return new Date(d.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 7);
+}
+
+export type IncomeRow = { amount: number; status: 'MATCHED' | 'LATE_MATCHED' | 'REVIEW' | 'ASSIGNED' | 'IGNORED'; receivedAt: Date; creditedAmount: number | null };
+type Bucket = { count: number; sum: number };
+
+/**
+ * Kartaga tushgan pullar xulosasi:
+ *  - credited: o'quvchi balansiga yozilgan (MATCHED, LATE_MATCHED, ASSIGNED) — kartaga tushgan to'liq summa (sum) va balansga yozilgan (creditedSum)
+ *  - review:   hali hal qilinmagan — tekshirib, biriktirish yoki e'tiborsiz qoldirish kerak
+ *  - ignored:  Izlan'ga tegishli emas deb belgilangan (shaxsiy o'tkazma va h.k.)
+ *  - days:     kunlar kesimida faqat credited (Toshkent sanasi bo'yicha)
+ */
+export function summarizeIncomes(rows: readonly IncomeRow[]) {
+  const credited: Bucket & { creditedSum: number } = { count: 0, sum: 0, creditedSum: 0 };
+  const review: Bucket = { count: 0, sum: 0 };
+  const ignored: Bucket = { count: 0, sum: 0 };
+  const days = new Map<string, Bucket>();
+  for (const r of rows) {
+    if (r.status === 'REVIEW') {
+      review.count++;
+      review.sum += r.amount;
+    } else if (r.status === 'IGNORED') {
+      ignored.count++;
+      ignored.sum += r.amount;
+    } else {
+      credited.count++;
+      credited.sum += r.amount;
+      credited.creditedSum += r.creditedAmount ?? 0;
+      const day = new Date(r.receivedAt.getTime() + TASHKENT_OFFSET_MS).toISOString().slice(0, 10);
+      const b = days.get(day) ?? { count: 0, sum: 0 };
+      b.count++;
+      b.sum += r.amount;
+      days.set(day, b);
+    }
+  }
+  return { credited, review, ignored, days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, b]) => ({ day, ...b })) };
+}

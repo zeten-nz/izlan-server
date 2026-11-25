@@ -237,6 +237,18 @@ describe('Balans va kurs xaridi (PostgreSQL)', { skip: !RUN }, () => {
     await billing.cancelTopup(u.id, r.id);
   });
 
+  test("hisobot: oy bo'yicha kirimlar Toshkent vaqtida yig'iladi", async () => {
+    // Eski oy — boshqa testlar/qatorlar aralashmasligi uchun; so'rovsiz kirim → REVIEW
+    const before = await billing.incomeReport('2020-03');
+    await income(7_000, { receivedAt: new Date('2020-03-31T18:30:00Z') }); // Toshkent: 31-mart 23:30
+    await income(8_000, { receivedAt: new Date('2020-03-31T19:30:00Z') }); // Toshkent: 1-aprel → bu oyga kirmaydi
+    const after = await billing.incomeReport('2020-03');
+    assert.equal(after.month, '2020-03');
+    assert.equal(after.review.count, before.review.count + 1);
+    assert.equal(after.review.sum, before.review.sum + 7_000);
+    await assert.rejects(billing.incomeReport('2020-3'), /YYYY-MM/);
+  });
+
   test('pul tarixi append-only: UPDATE taqiqlangan', async () => {
     const { u } = await funded(5_000);
     const row = await prisma.moneyLedger.findFirstOrThrow({ where: { userId: u.id } });

@@ -146,6 +146,7 @@ class IgnoreDto {
  *  - POST /internal/incomes/:id/assign      { username, amount?, by } qo'lda biriktirish
  *  - POST /internal/incomes/:id/ignore      { by, note? }
  *  - GET  /internal/incomes/stats           nazorat: reviewCount, oldestReviewAgeMinutes, lastIncomeAgeMinutes, pendingTopups
+ *  - GET  /internal/incomes/report?month=   oylik kirim hisoboti (credited / review / ignored, kunlar kesimida)
  */
 @Controller('internal')
 @UseGuards(BotTokenGuard)
@@ -173,6 +174,13 @@ export class InternalBotController {
   @Header('Cache-Control', 'no-store')
   stats() {
     return this.billing.incomeStats();
+  }
+
+  /** Oylik kirim hisoboti (Toshkent vaqti): ?month=YYYY-MM, berilmasa joriy oy. */
+  @Get('incomes/report')
+  @Header('Cache-Control', 'no-store')
+  report(@Query('month') month?: string) {
+    return this.billing.incomeReport(month || undefined);
   }
 
   @Post('incomes/:id/assign')

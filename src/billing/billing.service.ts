@@ -16,6 +16,9 @@ import {
   hasActiveAccess,
   isPaidCourse,
   pickSuffix,
+  summarizeIncomes,
+  tashkentMonthOf,
+  tashkentMonthRange,
   validateTopupBase,
 } from './billing.rules';
 
@@ -261,6 +264,21 @@ export class BillingService {
       pendingTopups,
       paidLast24h,
     };
+  }
+
+  /**
+   * Oylik kirim hisoboti (Toshkent vaqti bo'yicha, receivedAt): egasi savdoni qo'lda hisobga olishi uchun.
+   * month berilmasa — joriy oy.
+   */
+  async incomeReport(month?: string, now = new Date()) {
+    const m = month ?? tashkentMonthOf(now);
+    const range = tashkentMonthRange(m);
+    if (!range) throw fail(HttpStatus.BAD_REQUEST, 'BAD_MONTH', "Oy YYYY-MM ko'rinishida bo'lishi kerak");
+    const rows = await this.prisma.bankIncome.findMany({
+      where: { receivedAt: { gte: range.from, lt: range.to } },
+      select: { amount: true, status: true, receivedAt: true, creditedAmount: true },
+    });
+    return { month: m, ...summarizeIncomes(rows) };
   }
 
   async ignoreIncome(incomeId: string, by: string, note?: string) {

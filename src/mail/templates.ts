@@ -17,11 +17,19 @@ const COPY: Record<OtpPurpose, { subject: string; title: string; lead: string; p
 
 export type RenderedMail = { subject: string; html: string; text: string };
 
+/** Logo: faqat ishonchli https URL bo'lsa rasm (rasmlar bloklansa alt="IZLAN" ko'rinadi), aks holda matnli belgi. */
+function logoHtml(url?: string): string {
+  if (url && /^https:\/\/[A-Za-z0-9.-]+(:\d+)?\/[A-Za-z0-9/._-]+$/.test(url)) {
+    return `<img src="${url}" width="140" alt="IZLAN" style="display:block;border:0;width:140px;height:auto;font-weight:900;font-size:26px;color:#0b0b0b;">`;
+  }
+  return '<div style="font-weight:900;font-size:26px;letter-spacing:-1px;line-height:1;">IZLAN</div>';
+}
+
 /**
  * Email mijozlari uchun: jadval maketi, inline stillar, box-shadow/flex yo'q (Outlook/Gmail).
  * `code` faqat 6 ta raqam (generateOtp), shuning uchun HTML-escape talab qilinmaydi.
  */
-export function renderOtpMail(purpose: OtpPurpose, code: string, ttlMinutes: number): RenderedMail {
+export function renderOtpMail(purpose: OtpPurpose, code: string, ttlMinutes: number, logoUrl?: string): RenderedMail {
   const c = COPY[purpose];
   const note = `Kod ${ttlMinutes} daqiqa amal qiladi va faqat bir marta ishlatiladi.`;
   const warn = "Agar bu so'rovni siz yubormagan bo'lsangiz, bu xatni e'tiborsiz qoldiring. Kodni hech kimga aytmang — Izlan xodimlari ham uni so'ramaydi.";
@@ -34,7 +42,7 @@ export function renderOtpMail(purpose: OtpPurpose, code: string, ttlMinutes: num
 <tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#ffffff;border:3px solid #0b0b0b;border-bottom-width:7px;border-right-width:7px;">
 <tr><td style="padding:28px 24px;font-family:Arial,Helvetica,sans-serif;color:#0b0b0b;">
-<div style="font-weight:900;font-size:26px;letter-spacing:-1px;line-height:1;">IZLAN</div>
+${logoHtml(logoUrl)}
 <h1 style="margin:22px 0 8px;font-size:22px;line-height:1.25;text-transform:uppercase;">${c.title}</h1>
 <p style="margin:0 0 20px;font-size:16px;line-height:1.5;">${c.lead}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>

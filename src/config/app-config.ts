@@ -25,6 +25,18 @@ export class AppConfig {
   get port() {
     return this.num('PORT', 4000);
   }
+  /**
+   * Serverdan oldingi ishonchli proxy'lar soni (main.ts trustProxy). 1 = faqat Next.
+   * Nginx → Next → server zanjirida ham 1 yetadi, agar Nginx X-Forwarded-For'ni $remote_addr bilan almashtirsa;
+   * $proxy_add_x_forwarded_for ishlatilsa ham 1 (mijoz IP eng o'ngda bo'ladi).
+   */
+  get trustProxyHops() {
+    const raw = this.cfg.get<string>('TRUST_PROXY_HOPS');
+    if (raw === undefined || raw === '') return 1;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0 || n > 5) throw new Error(".env da TRUST_PROXY_HOPS 0..5 butun son bo'lishi kerak");
+    return n;
+  }
 
   get authSecret() {
     const s = this.str('AUTH_SECRET');
@@ -72,6 +84,11 @@ export class AppConfig {
       user: this.str('SMTP_USER'),
       pass: this.str('SMTP_PASS'),
     };
+  }
+  /** Email shablonidagi logo: APP_URL https bo'lsagina (lokal http'da rasm ishlatilmaydi). Fayl: client/public/brand/logo-email.png */
+  get emailLogoUrl(): string | undefined {
+    const base = (this.cfg.get<string>('APP_URL') ?? '').replace(/\/+$/, '');
+    return base.startsWith('https://') ? `${base}/brand/logo-email.png` : undefined;
   }
   get mailFrom() {
     return this.str('MAIL_FROM', 'Izlan <no-reply@izlan.uz>');

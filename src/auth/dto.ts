@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, Max, Min, MinLength } from 'class-validator';
+import { Equals, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, Max, Min, MinLength } from 'class-validator';
 
 /** Parol siyosati: kamida 8 belgi, katta harf, kichik harf va raqam. Klient ham xuddi shu qoidani ishlatadi. */
 export const PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,128}$/;
@@ -61,7 +61,14 @@ export class RegisterDto extends EmailField {
 
   @IsString({ message: 'Parolni qayta kiriting' })
   confirmPassword!: string;
+
+  /** Ommaviy oferta va maxfiylik siyosatiga aniq rozilik (checkbox oldindan belgilanmaydi). Versiya: LEGAL_VERSION. */
+  @Equals(true, { message: "Davom etish uchun ommaviy oferta va maxfiylik siyosatiga rozilik bering" })
+  acceptTerms!: boolean;
 }
+
+/** Huquqiy hujjatlar versiyasi: matn o'zgarsa yangilanadi va rozilik auditda shu versiya bilan yoziladi. */
+export const LEGAL_VERSION = "2026-11-draft";
 
 export class VerifyRegistrationDto extends OtpField {}
 

@@ -16,6 +16,18 @@ import {
 /** Auth endpointlari uchun qattiqroq limit: IP boshiga daqiqasiga 10 ta. */
 const STRICT = { default: { limit: 10, ttl: 60_000 } };
 
+/**
+ * Xat yuboradigan endpointlar: IP boshiga SOATIGA cheklov. Kunlik email kvotasi (EMAIL_DAILY_LIMIT) umumiy —
+ * bitta manba uni tugatib, boshqalarning ro'yxatdan o'tishini to'xtatmasligi uchun.
+ * Murosa: bitta NAT ortidagi sinf/ofis ham shu limitni bo'lishadi, shuning uchun juda past emas.
+ */
+const MAIL_HOURLY = (limit: number) => ({ default: { limit, ttl: 3_600_000 } });
+
+const REG_COOKIE = 'izlan_reg';
+const REG_COOKIE_PATH = '/api/auth/register';
+/** OTP TTL (10 daq) + bir necha resend uchun yetarli; qator o'zi baribir TTL bilan tugaydi. */
+const REG_COOKIE_MAX_AGE_S = 2 * 3600;
+
 @Controller('auth')
 @Throttle(STRICT)
 export class AuthController {
@@ -39,20 +51,32 @@ export class AuthController {
     reply.clearCookie(this.config.cookieName, { path: '/' });
   }
 
+  /**
+   * Ro'yxatdan o'tish so'rovini boshlagan brauzer tokeni (S-01). Faqat /api/auth/register* yo'llariga yuboriladi.
+   * Brauzer yo'li Next rewrite orqali ham /api/auth/register… bo'lgani uchun path bir xil ishlaydi.
+   */
+  private setRegCookie(reply: FastifyReply, token: string) {
+    reply.setCookie(REG_COOKIE, token, { httpOnly: true, sameSite: 'strict', secure: this.config.isProd, path: REG_COOKIE_PATH, maxAge: REG_COOKIE_MAX_AGE_S });
+  }
+
   private token(req: FastifyRequest): string | undefined {
     return req.cookies?.[this.config.cookieName];
   }
 
   @Post('register')
   @HttpCode(200)
-  register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto);
+  @Throttle(MAIL_HOURLY(15))
+  async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) reply: FastifyReply) {
+    const { clientToken, ...res } = await this.auth.register(dto);
+    this.setRegCookie(reply, clientToken);
+    return res;
   }
 
   @Post('register/resend')
   @HttpCode(200)
-  resendRegistration(@Body() dto: ResendDto) {
-    return this.auth.resendRegistration(dto);
+  @Throttle(MAIL_HOURLY(15))
+  resendRegistration(@Body() dto: ResendDto, @Req() req: FastifyRequest) {
+    return this.auth.resendRegistration(dto, req.cookies?.[REG_COOKIE]);
   }
 
   @Post('register/verify')
@@ -62,8 +86,9 @@ export class AuthController {
     @Req() req: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
   ) {
-    const session = await this.auth.verifyRegistration(dto, req.headers['user-agent']);
+    const session = await this.auth.verifyRegistration(dto, req.cookies?.[REG_COOKIE], req.headers['user-agent']);
     this.setSessionCookie(reply, session);
+    reply.clearCookie(REG_COOKIE, { path: REG_COOKIE_PATH });
     return { user: session.user };
   }
 
@@ -100,6 +125,7 @@ export class AuthController {
 
   @Post('forgot')
   @HttpCode(200)
+  @Throttle(MAIL_HOURLY(10))
   forgot(@Body() dto: ForgotDto) {
     return this.auth.forgot(dto);
   }

@@ -18,11 +18,17 @@ function toFieldErrors(errors: ValidationError[]): UnprocessableEntityException 
 }
 
 async function bootstrap() {
-  // Next rewrites orqali kelgani uchun haqiqiy IP X-Forwarded-For'da (rate limit shunga tayanadi).
+  // Rate limit request.ip ga tayanadi. trustProxy: true bo'lsa Fastify X-Forwarded-For'ning ENG CHAP qiymatini
+  // oladi — uni mijozning o'zi yozadi (Next rewrite sarlavhani o'zgartirmay o'tkazadi), ya'ni limitni aylanib
+  // o'tish mumkin edi. Endi faqat TRUST_PROXY_HOPS ta ishonchli hop hisobga olinadi va IP o'ngdan olinadi.
+  // Standart 1: socket = Next (127.0.0.1), mijoz IP = XFF'ning eng o'ng qiymati.
+  // Productionda oldidagi Nginx X-Forwarded-For ni o'zi qo'yishi SHART ($remote_addr yoki
+  // $proxy_add_x_forwarded_for), aks holda to'g'ridan-to'g'ri Next'ga kelgan mijoz sarlavhani soxtalashtira oladi.
   // Server tashqi dunyoga to'g'ridan-to'g'ri ochilmasligi kerak.
+  let trustedHops = 1; // .env AppConfig orqali o'qilgach yangilanadi (so'rovlar listen'dan keyin keladi)
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ trustProxy: true, bodyLimit: 32 * 1024 }),
+    new FastifyAdapter({ trustProxy: (_address: string, hop: number) => hop < trustedHops, bodyLimit: 32 * 1024 }),
   );
   // Dars hujjatlari katta bo'lishi mumkin: 32KB cheklov faqat qoralama saqlash yo'li uchun 1MB gacha ko'tariladi.
   app
@@ -35,6 +41,7 @@ async function bootstrap() {
   const config = app.get(AppConfig);
   config.authSecret; // yetishmasa darrov xato bersin
   config.mailDriver;
+  trustedHops = config.trustProxyHops;
 
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart);

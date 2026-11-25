@@ -1,4 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
+import { activeAccessDirections } from '../billing/billing.service';
+import { isPaidCourse, isPaywalledTopic } from '../billing/billing.rules';
 import { Prisma, type PlacementAttempt } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -12,6 +14,7 @@ import {
 } from './progress';
 import {
   claimedTestSize,
+  pickNextDiverse,
   judgeClaimed,
   nextUnknownStep,
   pct,
@@ -50,6 +53,8 @@ export class LearningService {
       title: d.title,
       description: d.description,
       active: d.active,
+      /** Oylik narx (so'm); null — bepul kurs */
+      monthlyPriceUzs: isPaidCourse(d.monthlyPriceUzs) ? d.monthlyPriceUzs : null,
       /** Daraja aniqlash testi savollari bormi: yo'q bo'lsa o'quvchiga faqat "0 dan boshlash" ko'rsatiladi */
       placementReady: hasQuestions.has(d.id),
       levels: d.levels.map((l) => ({
@@ -80,6 +85,11 @@ export class LearningService {
     });
 
     const { frontiers, counts } = await this.frontiersFor(userId, userDirections);
+    const [paid, accessRows] = await Promise.all([
+      activeAccessDirections(this.prisma, userId),
+      this.prisma.courseAccess.findMany({ where: { userId }, select: { directionId: true, endsAt: true } }),
+    ]);
+    const accessEnds = new Map(accessRows.map((a) => [a.directionId, a.endsAt]));
 
     const directions = userDirections.map((ud) => {
       const current = ud.currentLevelOrd;
@@ -102,6 +112,8 @@ export class LearningService {
               ord: t.ord,
               title: t.title,
               state: topicStateOf(current, ud.levelAccess, lv.ord, t.ord, frontier),
+              /** Pullik va obuna yo'q: mavzu ochilmaydi, «Kursni sotib olish» ko'rsatiladi */
+              paywalled: isPaywalledTopic(ud.direction.monthlyPriceUzs, t.ord) && !paid.has(ud.directionId),
               lessons: c
                 ? { total: c.total, completed: c.completed, topicCompleted: isTopicCompleted(c), contentPreparing: isContentPreparing(c) }
                 : null,
@@ -116,6 +128,9 @@ export class LearningService {
         slug: ud.direction.slug,
         title: ud.direction.title,
         kind: ud.direction.kind,
+        monthlyPriceUzs: isPaidCourse(ud.direction.monthlyPriceUzs) ? ud.direction.monthlyPriceUzs : null,
+        accessEndsAt: accessEnds.get(ud.directionId) ?? null,
+        hasAccess: paid.has(ud.directionId),
         currentLevelOrd: current,
         levelAccess: ud.levelAccess,
         placedBy: ud.placedBy,
@@ -305,7 +320,7 @@ export class LearningService {
     return attempt.done ? this.resultView(attempt) : this.questionView(attempt);
   }
 
-  private async questionView(attempt: PlacementAttempt & { direction: { levels: Array<{ ord: number; code: string }> } }) {
+  private async questionView(attempt: PlacementAttempt & { direction: { levels: Array<{ id: string; ord: number; code: string }> } }) {
     const answers = attempt.answers as unknown as Answer[];
     const currentId = attempt.questionIds[answers.length];
     const q = await this.prisma.question.findUniqueOrThrow({ where: { id: currentId } });
@@ -319,6 +334,11 @@ export class LearningService {
       levelCode: level?.code ?? null,
       index: answers.length + 1,
       total,
+      /** UNKNOWN: joriy pog'ona (progress uchun) */
+      stage: attempt.mode === 'UNKNOWN' ? (() => {
+        const lv = attempt.direction.levels.find((l) => l.id === q.levelId);
+        return lv ? { ord: lv.ord, code: lv.code, of: attempt.direction.levels.length } : null;
+      })() : null,
       question: { id: q.id, prompt: q.prompt, instruction: q.instruction, options: q.options },
     };
   }
@@ -373,15 +393,17 @@ export class LearningService {
           resultOrd = step.resultOrd;
         } else {
           const lv = levels.find((l) => l.ord === step.levelOrd)!;
-          const pool = await tx.question.findMany({
-            where: { levelId: lv.id, id: { notIn: questionIds } },
-            select: { id: true, ruleId: true },
-          });
-          if (pool.length === 0) {
+          const [pool, askedHere] = await Promise.all([
+            tx.question.findMany({ where: { levelId: lv.id, id: { notIn: questionIds } }, select: { id: true, ruleId: true } }),
+            tx.question.findMany({ where: { levelId: lv.id, id: { in: questionIds } }, select: { ruleId: true } }),
+          ]);
+          // Pog'onada qoidalar navbatma-navbat: bitta mavzudan ketma-ket savol tushmasin
+          const nextQ = pickNextDiverse(pool, askedHere.map((q) => q.ruleId));
+          if (!nextQ) {
             finished = true;
             resultOrd = step.levelOrd;
           } else {
-            questionIds = [...questionIds, pickDiverse(pool, 1)[0].id];
+            questionIds = [...questionIds, nextQ.id];
           }
         }
       }
@@ -496,11 +518,12 @@ export class LearningService {
     const rows = await this.prisma.userMistake.findMany({
       where: { userId },
       orderBy: { lastAt: 'desc' },
-      include: { question: { include: { rule: true, topic: { include: { level: true } }, level: true } } },
+      include: { question: { include: { rule: true, topic: { include: { level: { include: { direction: { select: { monthlyPriceUzs: true } } } } } }, level: true } } },
     });
     const userDirections = await this.fullDirections(userId);
     const access = new Map(userDirections.map((u) => [u.directionId, u]));
     const { frontiers } = await this.frontiersFor(userId, userDirections);
+    const paid = await activeAccessDirections(this.prisma, userId);
 
     const groups = new Map<string, {
       ruleKey: string; title: string; tipTitle: string; tipBody: string; remember: string; total: number; lastAt: Date;
@@ -521,7 +544,10 @@ export class LearningService {
           id: q.topic.id,
           title: q.topic.title,
           levelCode: q.topic.level.code,
-          accessible: this.canOpenTopic(access.get(q.directionId), q.topic.level.ord, q.topic.ord, frontiers.get(q.directionId) ?? 1),
+          // Obunasiz pullik mavzu "ochiq" ko'rsatilmaydi (bossa 402 bo'lardi)
+          accessible:
+            !(isPaywalledTopic(q.topic.level.direction.monthlyPriceUzs, q.topic.ord) && !paid.has(q.directionId)) &&
+            this.canOpenTopic(access.get(q.directionId), q.topic.level.ord, q.topic.ord, frontiers.get(q.directionId) ?? 1),
         },
         items: [],
       };
@@ -563,13 +589,15 @@ export class LearningService {
   async accessibleTopicIds(userId: string, topicIds: string[]): Promise<Set<string>> {
     const out = new Set<string>();
     if (topicIds.length === 0) return out;
-    const topics = await this.prisma.topic.findMany({ where: { id: { in: [...new Set(topicIds)] } }, include: { level: true } });
+    const topics = await this.prisma.topic.findMany({ where: { id: { in: [...new Set(topicIds)] } }, include: { level: { include: { direction: { select: { monthlyPriceUzs: true } } } } } });
+    const paid = await activeAccessDirections(this.prisma, userId);
     const uds = await this.fullDirections(userId);
     const access = new Map(uds.map((u) => [u.directionId, u]));
     const { frontiers } = await this.frontiersFor(userId, uds);
     for (const t of topics) {
       const ud = access.get(t.level.directionId);
-      if (this.canOpenTopic(ud, t.level.ord, t.ord, frontiers.get(t.level.directionId) ?? 1)) out.add(t.id);
+      const paywalled = isPaywalledTopic(t.level.direction.monthlyPriceUzs, t.ord) && !paid.has(t.level.directionId);
+      if (!paywalled && this.canOpenTopic(ud, t.level.ord, t.ord, frontiers.get(t.level.directionId) ?? 1)) out.add(t.id);
     }
     return out;
   }
@@ -591,6 +619,19 @@ export class LearningService {
     const frontier = ud ? ((await this.frontiersFor(userId, [ud])).frontiers.get(ud.directionId) ?? 1) : 1;
     if (!this.canOpenTopic(ud, topic.level.ord, topic.ord, frontier)) {
       throw new ForbiddenException('Bu mavzu hali ochilmagan: avval oldingi bosqichlarni tugating');
+    }
+    const price = topic.level.direction.monthlyPriceUzs;
+    if (isPaywalledTopic(price, topic.ord) && !(await activeAccessDirections(this.prisma, userId)).has(topic.level.directionId)) {
+      throw new HttpException(
+        {
+          code: 'PAYMENT_REQUIRED',
+          message: 'Bu mavzu pullik: davom etish uchun kursni sotib oling',
+          directionId: topic.level.directionId,
+          directionTitle: topic.level.direction.title,
+          monthlyPriceUzs: price,
+        },
+        HttpStatus.PAYMENT_REQUIRED,
+      );
     }
     return {
       id: topic.id,

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# IZLAN — kunlik backup namunasi (cron: 0 3 * * *). DB + uploads, shifrlangan, off-site nusxa bilan.
+# Talab: pg_dump, tar, age (https://age-encryption.org), rclone (off-site). Maxfiy qiymatlar faqat /etc/izlan/backup.env da.
+set -euo pipefail
+source /etc/izlan/backup.env   # DATABASE_URL, UPLOAD_DIR, AGE_RECIPIENT, RCLONE_REMOTE, BACKUP_DIR
+
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p "$BACKUP_DIR"
+umask 077
+
+# 1) Ma'lumotlar bazasi (custom format: tanlab tiklash mumkin)
+pg_dump --format=custom --no-owner "$DATABASE_URL" | age -r "$AGE_RECIPIENT" > "$BACKUP_DIR/db-$stamp.dump.age"
+
+# 2) Media fayllar (uploads) — DB'da faqat metadata bor, fayllarning o'zi shu yerda
+tar -C "$(dirname "$UPLOAD_DIR")" -cf - "$(basename "$UPLOAD_DIR")" | age -r "$AGE_RECIPIENT" > "$BACKUP_DIR/uploads-$stamp.tar.age"
+
+# 3) Off-site nusxa va lokal tozalash (14 kun)
+rclone copy "$BACKUP_DIR" "$RCLONE_REMOTE" --include "*-$stamp.*"
+find "$BACKUP_DIR" -name "*.age" -mtime +14 -delete
+
+echo "backup ok $stamp"

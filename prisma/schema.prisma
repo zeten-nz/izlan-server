@@ -55,6 +55,10 @@ model User {
   topicCompletions TopicCompletion[]
   quizAttempts     QuizAttempt[]
   authoredQuizzes  TopicQuiz[]       @relation("QuizAuthor")
+
+  moneyLedger   MoneyLedger[]
+  courseAccess  CourseAccess[]
+  topupRequests TopupRequest[]
 }
 
 /// Server-side sessiya. Cookie'da faqat tasodifiy token, bazada uning hash'i.
@@ -84,6 +88,9 @@ model PendingRegistration {
   birthYear    Int
   passwordHash String
   codeHash     String
+  /// sha256(brauzerdagi httpOnly "ro'yxatdan o'tish" cookie tokeni): resend/verify faqat so'rovni boshlagan brauzerdan.
+  /// Boshqa odam shu email bilan qayta register qilsa, qator unga bog'lanadi va egasining kodi bilan hisob yaratilmaydi.
+  clientHash   String?
   attempts     Int      @default(0)
   expiresAt    DateTime
   lastSentAt   DateTime
@@ -118,19 +125,22 @@ enum DirectionKind {
 }
 
 model Direction {
-  id          String        @id @default(uuid())
-  slug        String        @unique
-  kind        DirectionKind
-  title       String
-  description String
+  id              String        @id @default(uuid())
+  slug            String        @unique
+  kind            DirectionKind
+  title           String
+  description     String
   /// false = "Tez orada": tanlab bo'lmaydi
-  active      Boolean       @default(false)
-  sortOrder   Int           @default(0)
+  active          Boolean       @default(false)
+  sortOrder       Int           @default(0)
+  /// Oylik narx (so'm). null yoki 0 = bepul: hech qaysi mavzu yopilmaydi. >0 bo'lsa har darajaning 1-mavzusidan keyingilari pullik.
+  monthlyPriceUzs Int?
 
-  levels     Level[]
-  users      UserDirection[]
-  questions  Question[]
-  placements PlacementAttempt[]
+  levels       Level[]
+  courseAccess CourseAccess[]
+  users        UserDirection[]
+  questions    Question[]
+  placements   PlacementAttempt[]
 }
 
 model Level {
@@ -498,6 +508,8 @@ model Wallet {
   xpBalance     Int      @default(0)
   totalXpEarned Int      @default(0)
   izlBalance    Int      @default(0)
+  /// Pul balansi (butun so'm). Faqat MoneyLedger orqali o'zgaradi; DB CHECK >= 0.
+  balanceUzs    Int      @default(0)
   updatedAt     DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -993,4 +1005,104 @@ model GrammarImportRun {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   report     Json      @default("{}")
+}
+
+// ───────────── Pul balansi, kurs huquqi va saytdan to'ldirish ─────────────
+
+enum MoneyKind {
+  TOPUP
+  PURCHASE
+  ADJUST
+}
+
+/// Append-only pul tarixi (UPDATE taqiqlangan, trigger). amount: + kirim, - chiqim.
+model MoneyLedger {
+  id           String    @id @default(uuid())
+  userId       String
+  kind         MoneyKind
+  amount       Int
+  balanceAfter Int
+  /// Takrorlanmaslik kaliti: TOPUP uchun "income:<BankIncome.id>", PURCHASE uchun "buy:<user>:<idempotencyKey>"
+  dedupeKey    String    @unique
+  directionId  String?
+  note         String?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+/// Yo'nalish (kurs) uchun to'langan muddat. Har xarid endsAt ni 30 kunga suradi.
+model CourseAccess {
+  id          String   @id @default(uuid())
+  userId      String
+  directionId String
+  endsAt      DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  direction Direction @relation(fields: [directionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, directionId])
+}
+
+enum TopupStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+/// Saytdan to'ldirish so'rovi: noyob summa (amount = baseAmount + suffix, 1..99).
+/// Faol (PENDING) so'rovlar orasida amount va userId noyob — partial unique index (migratsiyada).
+model TopupRequest {
+  id         String      @id @default(uuid())
+  userId     String
+  baseAmount Int
+  suffix     Int
+  amount     Int
+  status     TopupStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+  expiresAt  DateTime
+  closedAt   DateTime?
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  incomes BankIncome[]
+
+  @@index([amount, status])
+  @@index([status, expiresAt])
+  @@index([userId, createdAt])
+}
+
+enum BankIncomeStatus {
+  MATCHED
+  LATE_MATCHED
+  REVIEW
+  ASSIGNED
+  IGNORED
+}
+
+/// Kartaga tushgan pul (to'lov kuzatuvchisi bank bildirishnomasidan yuboradi). externalId bo'yicha takrorlanmaydi.
+model BankIncome {
+  id             String           @id @default(uuid())
+  source         String
+  externalId     String           @unique
+  amount         Int
+  hasFraction    Boolean          @default(false)
+  receivedAt     DateTime
+  rawText        String?
+  status         BankIncomeStatus
+  reason         String?
+  topupRequestId String?
+  /// Kimga va qancha yozildi (MATCHED / LATE_MATCHED / ASSIGNED)
+  creditedUserId String?
+  creditedAmount Int?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  topupRequest TopupRequest? @relation(fields: [topupRequestId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }

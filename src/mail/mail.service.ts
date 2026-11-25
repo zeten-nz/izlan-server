@@ -30,7 +30,7 @@ export class MailService {
    * (timeout/5xx) rezerv saqlanadi — xat ketgan bo'lishi mumkin.
    */
   async sendOtp(to: string, code: string, purpose: OtpPurpose, ttlMinutes: number, idempotencyKey?: string): Promise<void> {
-    const mail = renderOtpMail(purpose, code, ttlMinutes);
+    const mail = renderOtpMail(purpose, code, ttlMinutes, this.config.emailLogoUrl);
     const limit = this.config.emailDailyLimit;
 
     let token: QuotaToken | null = null;

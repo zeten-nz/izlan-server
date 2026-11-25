@@ -138,6 +138,7 @@ export class CatalogService {
           title: d.title,
           description: d.description,
           active: d.active,
+          monthlyPriceUzs: d.monthlyPriceUzs,
           sortOrder: d.sortOrder,
           learners: f.states.length,
           questions: f.questions,
@@ -227,6 +228,7 @@ export class CatalogService {
           ...(dto.title !== undefined ? { title: dto.title } : {}),
           ...(dto.description !== undefined ? { description: dto.description } : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(dto.monthlyPriceUzs !== undefined ? { monthlyPriceUzs: dto.monthlyPriceUzs || null } : {}),
         },
       });
       return { ok: true };
